@@ -77,3 +77,47 @@ fn Fleet::Session::close ($s) {
 ## The ordered event log: arrayref of +{event, data} hashrefs, where
 ## event is one of send / match / timeout / close.
 fn Fleet::Session::transcript ($s) { $s->{log} }
+
+## Send text with a guaranteed trailing newline — the common case for
+## answering a prompt. Logged as a `send` event like `send`.
+fn Fleet::Session::send_line ($s, $text) {
+    val $line = substr($text, -1) eq "\n" ? $text : "$text\n"
+    Fleet::Session::send($s, $line)
+}
+
+## Transcript entries of one event type (send / match / timeout /
+## close), in order. events($s, "match") → the matched-text entries.
+fn Fleet::Session::events ($s, $type) {
+    [ grep { $_->{event} eq $type } @{ $s->{log} } ]
+}
+
+## The data of every `match` event, in order — the texts this session
+## matched. Pure read over the transcript.
+fn Fleet::Session::matches ($s) {
+    [ map { $_->{data} } grep { $_->{event} eq "match" } @{ $s->{log} } ]
+}
+
+## The data of the most recent `match` event, or undef if none yet.
+fn Fleet::Session::last_match ($s) {
+    var $last = undef
+    for val $e (@{ $s->{log} }) {
+        $last = $e->{data} if $e->{event} eq "match"
+    }
+    $last
+}
+
+## True if any expect/branch in this session has timed out. Catches a
+## degraded run even when an `optional` step let the playbook continue.
+fn Fleet::Session::timed_out ($s) {
+    (scalar @{ Fleet::Session::events($s, "timeout") }) > 0 ? 1 : 0
+}
+
+## Render the transcript as one "EVENT<TAB>DATA" line per event — the
+## human-readable dump for a failed session. Newlines in data are
+## escaped so each event stays on its own line.
+fn Fleet::Session::transcript_text ($s) {
+    join "\n", map {
+        val $d = $_->{data} =~ s/\n/\\n/gr
+        "$_->{event}\t$d"
+    } @{ $s->{log} }
+}

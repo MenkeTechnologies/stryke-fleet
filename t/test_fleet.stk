@@ -40,6 +40,26 @@ val $picked = Fleet::Session::branch($sb, [
 assert_eq $picked, "two", "branch table picks matching arm and runs action"
 Fleet::Session::close($sb)
 
+# ── Session transcript helpers ───────────────────────────────────────
+val $sh = Fleet::Session::open("cat")
+Fleet::Session::send_line($sh, "no-newline")
+assert_eq $sh->{log}[0]{data}, "no-newline\n", "send_line appends newline"
+Fleet::Session::send_line($sh, "has-newline\n")
+assert_eq $sh->{log}[1]{data}, "has-newline\n", "send_line leaves existing newline"
+Fleet::Session::expect($sh, qr/no-newline/, 10)
+Fleet::Session::expect($sh, qr/has-newline/, 10)
+assert_eq scalar(@{ Fleet::Session::events($sh, "send") }),  2, "events filters send entries"
+assert_eq scalar(@{ Fleet::Session::events($sh, "match") }), 2, "events filters match entries"
+assert_eq join(",", @{ Fleet::Session::matches($sh) }), "no-newline,has-newline", "matches lists matched texts in order"
+assert_eq Fleet::Session::last_match($sh), "has-newline", "last_match returns most recent"
+assert_ok !Fleet::Session::timed_out($sh), "timed_out false when all matched"
+Fleet::Session::expect($sh, qr/never-appears/, 1)
+assert_ok Fleet::Session::timed_out($sh), "timed_out true after a timeout"
+assert_match qr/send\tno-newline\\n/, Fleet::Session::transcript_text($sh), "transcript_text escapes newlines per line"
+assert_match qr/timeout\t/, Fleet::Session::transcript_text($sh), "transcript_text includes timeout events"
+Fleet::Session::close($sh)
+assert_eq Fleet::Session::last_match(Fleet::Session::open("true")), undef, "last_match undef on fresh session"
+
 # ── Playbook run: ok path ────────────────────────────────────────────
 val $r = Fleet::Playbook::run("cat", [
     +{ send => "alpha\n" },
