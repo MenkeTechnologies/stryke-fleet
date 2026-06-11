@@ -99,9 +99,9 @@
 
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-val">4</div><div class="stat-label">sublibraries</div></div>
-        <div class="stat-card"><div class="stat-val cyan">24</div><div class="stat-label">public fns</div></div>
+        <div class="stat-card"><div class="stat-val cyan">31</div><div class="stat-label">public fns</div></div>
         <div class="stat-card"><div class="stat-val green">0</div><div class="stat-label">cdylib / helper binaries</div></div>
-        <div class="stat-card"><div class="stat-val yellow">43</div><div class="stat-label">assertions in t/</div></div>
+        <div class="stat-card"><div class="stat-val yellow">61</div><div class="stat-label">assertions in t/</div></div>
         <div class="stat-card"><div class="stat-val">3</div><div class="stat-label">runnable examples</div></div>
         <div class="stat-card"><div class="stat-val cyan">22</div><div class="stat-label">CI gate scripts</div></div>
       </div>
@@ -114,7 +114,7 @@
         <tbody>
           <tr><td><code>Fleet::Session</code></td><td>One PTY with a memory: every <code>send</code>, <code>match</code>, <code>timeout</code>, and <code>close</code> is appended to an ordered transcript, so a failed run hands back the full interaction log instead of a stuck process.</td><td>Blocking, polling, regex compilation, PTY allocation &mdash; all in the <code>pty_*</code> builtins. Session adds bookkeeping, nothing else.</td></tr>
           <tr><td><code>Fleet::Playbook</code></td><td>Step semantics: ordered <code>+{expect, send, branches, timeout, optional, send_matched}</code> hashrefs; <code>validate</code> rejects malformed steps before anything spawns; first non-optional timeout fails the run with the step's name.</td><td>Session lifecycle when handed an already-open session (caller closes); parallelism (Fanout's job); retry policy (compose it in the step list).</td></tr>
-          <tr><td><code>Fleet::Recipes</code></td><td>The corpus: <code>ssh_login</code>, <code>sudo</code>, <code>psql</code>, <code>mysql</code>, <code>redis_cli</code>, <code>yes_to_all</code>, <code>cisco_enable</code> as step-list <em>generators</em>. Pure data &mdash; nothing spawns, so every recipe unit-tests without a network.</td><td>Execution. A recipe that calls <code>pty_spawn</code> is a bug; recipes return arrayrefs and stop.</td></tr>
+          <tr><td><code>Fleet::Recipes</code></td><td>The corpus: <code>ssh_login</code>, <code>sudo</code>, <code>su</code>, <code>psql</code>, <code>mysql</code>, <code>redis_cli</code>, <code>yes_to_all</code>, <code>cisco_enable</code>, <code>telnet_login</code>, <code>sftp</code>, <code>passwd_change</code>, <code>docker_login</code> as step-list <em>generators</em>. Pure data &mdash; nothing spawns, so every recipe unit-tests without a network.</td><td>Execution. A recipe that calls <code>pty_spawn</code> is a bug; recipes return arrayrefs and stop.</td></tr>
           <tr><td><code>Fleet::Fanout</code></td><td>One playbook &times; N targets: one PTY per <code>pmap</code> thread, results in target order, <code>partition</code> for the ok/failed split, <code>ssh</code> convenience for host lists.</td><td>Non-interactive remote compute &mdash; that's core's <code>cluster([...])</code> + <code>pmap_on</code> persistent SSH worker pools. Fleet is for sessions that prompt back.</td></tr>
         </tbody>
       </table>

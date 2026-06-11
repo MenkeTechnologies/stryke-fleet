@@ -147,7 +147,109 @@ fn Fleet::Recipes::cisco_enable ($opts) {
     ]
 }
 
+## su: switch user — answer the password prompt, then expect PROMPT.
+## opts: password (required), prompt, timeout.
+fn Fleet::Recipes::su ($opts) {
+    die "Fleet::Recipes::su: password required" unless defined $opts->{password}
+    val $prompt  = $opts->{prompt}  // qr/[\$#%>] ?$/m
+    val $timeout = $opts->{timeout} // 15
+    [
+        +{
+            name    => "su password",
+            expect  => qr/[Pp]assword:/,
+            send    => $opts->{password} . "\n",
+            timeout => $timeout,
+        },
+        +{ name => "post-su prompt", expect => $prompt, timeout => $timeout },
+    ]
+}
+
+## telnet login: `login:` → user, `Password:` → password, then PROMPT.
+## opts: user (required), password (required), prompt, timeout.
+fn Fleet::Recipes::telnet_login ($opts) {
+    die "Fleet::Recipes::telnet_login: user required"     unless defined $opts->{user}
+    die "Fleet::Recipes::telnet_login: password required" unless defined $opts->{password}
+    val $prompt  = $opts->{prompt}  // qr/[\$#%>] ?$/m
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{ name => "login prompt",    expect => qr/login: ?$/mi,   send => $opts->{user} . "\n",     timeout => $timeout },
+        +{ name => "telnet password", expect => qr/[Pp]assword: ?/, send => $opts->{password} . "\n", timeout => $timeout },
+        +{ name => "shell prompt",    expect => $prompt, timeout => $timeout },
+    ]
+}
+
+## sftp: optional host-key confirmation, optional password, then the
+## `sftp>` prompt. opts: password, timeout. Mirrors ssh_login's
+## branch-table opener.
+fn Fleet::Recipes::sftp ($opts = undef) {
+    $opts //= +{}
+    val $timeout = $opts->{timeout} // 30
+    var @steps = (
+        +{
+            name     => "host key / password",
+            branches => [
+                +{ re => qr/\(yes\/no(?:\/\[fingerprint\])?\)\?/, do => fn { "yes\n" } },
+                +{ re => qr/[Pp]assword:/ },
+                +{ re => qr/sftp> ?$/m },
+            ],
+            send_matched => 0,
+            timeout      => $timeout,
+            optional     => 1,
+        },
+    )
+    if (defined $opts->{password}) {
+        push @steps, +{
+            name     => "sftp password",
+            expect   => qr/[Pp]assword:/,
+            send     => $opts->{password} . "\n",
+            timeout  => $timeout,
+            optional => 1,
+        }
+    }
+    push @steps, +{ name => "sftp prompt", expect => qr/sftp> ?$/m, timeout => $timeout }
+    [@steps]
+}
+
+## passwd: the classic expect chain — optional current password (root
+## skips it), new password, retype, success message. opts: new_password
+## (required), old_password, timeout.
+fn Fleet::Recipes::passwd_change ($opts) {
+    unless (defined $opts->{new_password}) {
+        die "Fleet::Recipes::passwd_change: new_password required"
+    }
+    val $timeout = $opts->{timeout} // 15
+    var @steps
+    if (defined $opts->{old_password}) {
+        push @steps, +{
+            name     => "current password",
+            expect   => qr/(?:[Cc]urrent|[Oo]ld|\(current\)).*[Pp]assword: ?/,
+            send     => $opts->{old_password} . "\n",
+            timeout  => $timeout,
+            optional => 1,
+        }
+    }
+    push @steps,
+        +{ name => "new password",    expect => qr/[Nn]ew.*[Pp]assword: ?/, send => $opts->{new_password} . "\n", timeout => $timeout },
+        +{ name => "retype password", expect => qr/(?:[Rr]etype|[Rr]e-enter|again).*[Pp]assword: ?|[Nn]ew.*[Pp]assword: ?/, send => $opts->{new_password} . "\n", timeout => $timeout },
+        +{ name => "passwd success",  expect => qr/successfully|updated/i, timeout => $timeout }
+    [@steps]
+}
+
+## docker login: `Username:` → user, `Password:` → password, then the
+## success line. opts: user (required), password (required), timeout.
+fn Fleet::Recipes::docker_login ($opts) {
+    die "Fleet::Recipes::docker_login: user required"     unless defined $opts->{user}
+    die "Fleet::Recipes::docker_login: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{ name => "username", expect => qr/[Uu]sername: ?/, send => $opts->{user} . "\n",     timeout => $timeout, optional => 1 },
+        +{ name => "password", expect => qr/[Pp]assword: ?/, send => $opts->{password} . "\n", timeout => $timeout },
+        +{ name => "login ok", expect => qr/Login Succeeded/i, timeout => $timeout },
+    ]
+}
+
 ## All recipe names this sublib ships.
 fn Fleet::Recipes::names {
-    qw(ssh_login sudo psql mysql redis_cli yes_to_all cisco_enable)
+    qw(ssh_login sudo psql mysql redis_cli yes_to_all cisco_enable
+       su telnet_login sftp passwd_change docker_login)
 }

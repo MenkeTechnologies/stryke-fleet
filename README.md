@@ -16,7 +16,7 @@
 
 > *"Tcl/Expect automated one terminal in 1990. This automates fifty, in parallel, from a playbook."*
 
-`stryke-fleet` is parallel expect/PTY automation as a pure-stryke package: transcripted sessions, declarative playbooks, a recipe corpus for the interactive CLIs everyone scripts by hand (ssh, sudo, psql, mysql, redis-cli, installers, network gear), and multi-host fan-out on stryke's thread pool. The PTY primitives (`pty_spawn`, `pty_expect`, `pty_expect_table`, …) and the parallelism (`pmap`) are stryke builtins — this package is the orchestration layer. No `[ffi]` table, no cdylib, no helper binary — just `.stk` modules loaded on `use Fleet`. Created by MenkeTechnologies.
+`stryke-fleet` is parallel expect/PTY automation as a pure-stryke package: transcripted sessions, declarative playbooks, a recipe corpus for the interactive CLIs everyone scripts by hand (ssh, sftp, telnet, sudo, su, passwd, psql, mysql, redis-cli, docker login, installers, network gear), and multi-host fan-out on stryke's thread pool. The PTY primitives (`pty_spawn`, `pty_expect`, `pty_expect_table`, …) and the parallelism (`pmap`) are stryke builtins — this package is the orchestration layer. No `[ffi]` table, no cdylib, no helper binary — just `.stk` modules loaded on `use Fleet`. Created by MenkeTechnologies.
 
 ### [`strykelang`](https://github.com/MenkeTechnologies/strykelang) &middot; [`MenkeTechnologiesMeta`](https://github.com/MenkeTechnologies/MenkeTechnologiesMeta) · [`stryke-utils`](https://github.com/MenkeTechnologies/stryke-utils) · [`stryke-mcpd`](https://github.com/MenkeTechnologies/stryke-mcpd)
 
@@ -103,7 +103,7 @@ p "ok: " . scalar(@{ $part->{ok} }) . "  failed: " . scalar(@{ $part->{failed} }
 |---|--------|------|----:|------------|
 | 1 | `Fleet::Session` | `lib/Session.stk` | 11 | `open` · `send` · `expect` · `branch` · `read` · `buffer` · `alive` · `eof` · `interact` · `close` · `transcript` |
 | 2 | `Fleet::Playbook` | `lib/Playbook.stk` | 2 | `validate` · `run` (step lists with `expect`/`send`/`branches`/`optional`/`send_matched`) |
-| 3 | `Fleet::Recipes` | `lib/Recipes.stk` | 8 | `ssh_login` · `sudo` · `psql` · `mysql` · `redis_cli` · `yes_to_all` · `cisco_enable` · `names` |
+| 3 | `Fleet::Recipes` | `lib/Recipes.stk` | 13 | `ssh_login` · `sudo` · `su` · `psql` · `mysql` · `redis_cli` · `yes_to_all` · `cisco_enable` · `telnet_login` · `sftp` · `passwd_change` · `docker_login` · `names` |
 | 4 | `Fleet::Fanout` | `lib/Fanout.stk` | 3 | `run` (N targets, `pmap`) · `ssh` (host-list convenience) · `partition` |
 
 Recipes are pure data — they return playbook arrayrefs and never spawn anything, so they compose with `@{...}` splices and unit-test without a network.

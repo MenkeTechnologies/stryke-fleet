@@ -103,7 +103,34 @@ assert_eq Fleet::Playbook::validate(Fleet::Recipes::redis_cli(+{ password => "x"
 assert_eq Fleet::Playbook::validate(Fleet::Recipes::yes_to_all(4)),                 4, "yes_to_all count honored"
 assert_eq Fleet::Playbook::validate(Fleet::Recipes::cisco_enable(+{ enable_password => "x" })), 4, "cisco_enable validates"
 assert_dies fn { Fleet::Recipes::cisco_enable(+{}) }, "cisco_enable dies without enable_password"
-assert_eq scalar(Fleet::Recipes::names()), 7, "recipe roster pinned at 7"
+val $su = Fleet::Recipes::su(+{ password => "pw" })
+assert_eq scalar(@$su), 2,             "su is 2 steps"
+assert_eq $su->[0]{send}, "pw\n",      "su sends password + newline"
+assert_dies fn { Fleet::Recipes::su(+{}) }, "su dies without password"
+
+val $tel = Fleet::Recipes::telnet_login(+{ user => "admin", password => "pw" })
+assert_eq scalar(@$tel), 3,            "telnet_login is 3 steps"
+assert_eq $tel->[0]{send}, "admin\n",  "telnet_login sends user at login prompt"
+assert_eq Fleet::Playbook::validate($tel), 3, "telnet_login validates"
+assert_dies fn { Fleet::Recipes::telnet_login(+{ user => "x" }) }, "telnet_login dies without password"
+assert_dies fn { Fleet::Recipes::telnet_login(+{ password => "x" }) }, "telnet_login dies without user"
+
+assert_eq scalar(@{ Fleet::Recipes::sftp(+{ password => "pw" }) }), 3, "sftp with password is 3 steps"
+assert_eq scalar(@{ Fleet::Recipes::sftp() }),                      2, "sftp without password is 2 steps"
+assert_eq Fleet::Playbook::validate(Fleet::Recipes::sftp()),        2, "sftp validates"
+
+val $pwc = Fleet::Recipes::passwd_change(+{ old_password => "o", new_password => "n" })
+assert_eq scalar(@$pwc), 4,            "passwd_change with old is 4 steps"
+assert_eq $pwc->[1]{send}, "n\n",      "passwd_change sends new password"
+assert_eq scalar(@{ Fleet::Recipes::passwd_change(+{ new_password => "n" }) }), 3, "passwd_change as root is 3 steps"
+assert_dies fn { Fleet::Recipes::passwd_change(+{ old_password => "o" }) }, "passwd_change dies without new_password"
+
+val $dkr = Fleet::Recipes::docker_login(+{ user => "u", password => "p" })
+assert_eq scalar(@$dkr), 3,            "docker_login is 3 steps"
+assert_eq Fleet::Playbook::validate($dkr), 3, "docker_login validates"
+assert_dies fn { Fleet::Recipes::docker_login(+{ user => "u" }) }, "docker_login dies without password"
+
+assert_eq scalar(Fleet::Recipes::names()), 12, "recipe roster pinned at 12"
 
 # ── Fanout over local sessions ───────────────────────────────────────
 val $results = Fleet::Fanout::run(["cat", "cat", "cat"], [
