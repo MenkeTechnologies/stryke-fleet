@@ -23,7 +23,7 @@ use Fleet::Recipes
 use Fleet::Fanout
 
 ## Package version (single source of truth for the umbrella + sublibs).
-fn Fleet::version { "0.1.0" }
+fn Fleet::version { "0.2.0" }
 
 ## All sublibrary names, in load order.
 fn Fleet::modules {

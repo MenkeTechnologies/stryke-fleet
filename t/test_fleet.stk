@@ -150,4 +150,52 @@ assert_eq scalar(@{ $part->{failed} }), 2, "partition: both failed"
 
 assert_dies fn { Fleet::Fanout::run("cat", [+{ send => "x" }]) }, "fanout rejects scalar cmds"
 
+# ── Playbook step retries with retry_send nudge ──────────────────────
+val $rr = Fleet::Playbook::run("cat", [
+    +{ expect => qr/pong/, timeout => 1, retries => 2, retry_send => "pong\n", name => "nudged" },
+])
+assert_ok $rr->{ok}, "retry_send nudge converts timeout into match"
+val $rr_fail = Fleet::Playbook::run("cat", [
+    +{ expect => qr/never/, timeout => 1, retries => 1, name => "still ghost" },
+])
+assert_ok !$rr_fail->{ok},                          "retries without nudge still time out"
+assert_match qr/timeout on still ghost/, $rr_fail->{error}, "retry failure names the step"
+assert_dies fn { Fleet::Playbook::validate([+{ send => "x", retries => -1 }]) }, "validate rejects negative retries"
+assert_dies fn { Fleet::Playbook::validate([+{ send => "x", delay => -1 }]) },   "validate rejects negative delay"
+
+# ── Playbook per-step delay ──────────────────────────────────────────
+val $t0 = now_ms()
+val $rd = Fleet::Playbook::run("cat", [
+    +{ delay => 0.4, send => "paced\n" },
+    +{ expect => qr/paced/, timeout => 10 },
+])
+assert_ok $rd->{ok},                 "delayed playbook ok"
+assert_ok now_ms() - $t0 >= 300,     "delay actually paced the run (ms clock)"
+
+# ── Playbook::dry_run is pure ────────────────────────────────────────
+val $plan = Fleet::Playbook::dry_run([
+    +{ send => "hi\n", name => "greet" },
+    +{ expect => qr/x/, retries => 2, optional => 1 },
+])
+assert_match qr/greet.*send 3b/,            $plan, "dry_run shows send byte count"
+assert_match qr/retries 2, optional/,       $plan, "dry_run shows retries and optional"
+assert_dies fn { Fleet::Playbook::dry_run("nope") }, "dry_run validates input"
+
+# ── Fanout::summarize ────────────────────────────────────────────────
+val $mix = Fleet::Fanout::run(["cat", "cat"], [ +{ expect => qr/never/, timeout => 1, name => "ghost" } ])
+val $sum = Fleet::Fanout::summarize($mix)
+assert_eq $sum->{total},  2, "summarize total"
+assert_eq $sum->{ok},     0, "summarize ok count"
+assert_eq $sum->{failed}, 2, "summarize failed count"
+assert_match qr/^cat: timeout on ghost/, $sum->{errors}[0], "summarize error line format"
+
+# ── Fanout::retry_failed ─────────────────────────────────────────────
+val $retried = Fleet::Fanout::retry_failed($mix, [ +{ send => "ok\n" } ])
+assert_eq scalar(@$retried), 2,        "retry_failed preserves result count"
+assert_ok $retried->[0]{ok},           "retry_failed re-runs failed entry"
+assert_ok $retried->[0]{retried},      "retry_failed tags re-run entries"
+val $all_ok = Fleet::Fanout::run(["cat"], [ +{ send => "fine\n" } ])
+val $untouched = Fleet::Fanout::retry_failed($all_ok, [ +{ send => "x\n" } ])
+assert_ok !$untouched->[0]{retried},   "retry_failed leaves ok entries untouched"
+
 test_run

@@ -102,9 +102,9 @@ p "ok: " . scalar(@{ $part->{ok} }) . "  failed: " . scalar(@{ $part->{failed} }
 | # | Module | File | Fns | Highlights |
 |---|--------|------|----:|------------|
 | 1 | `Fleet::Session` | `lib/Session.stk` | 11 | `open` · `send` · `expect` · `branch` · `read` · `buffer` · `alive` · `eof` · `interact` · `close` · `transcript` |
-| 2 | `Fleet::Playbook` | `lib/Playbook.stk` | 2 | `validate` · `run` (step lists with `expect`/`send`/`branches`/`optional`/`send_matched`) |
+| 2 | `Fleet::Playbook` | `lib/Playbook.stk` | 3 | `validate` · `run` (step lists with `expect`/`send`/`branches`/`optional`/`send_matched`/`retries`/`retry_send`/`delay`) · `dry_run` (pure step preview) |
 | 3 | `Fleet::Recipes` | `lib/Recipes.stk` | 13 | `ssh_login` · `sudo` · `su` · `psql` · `mysql` · `redis_cli` · `yes_to_all` · `cisco_enable` · `telnet_login` · `sftp` · `passwd_change` · `docker_login` · `names` |
-| 4 | `Fleet::Fanout` | `lib/Fanout.stk` | 3 | `run` (N targets, `pmap`) · `ssh` (host-list convenience) · `partition` |
+| 4 | `Fleet::Fanout` | `lib/Fanout.stk` | 5 | `run` (N targets, `pmap`) · `ssh` (host-list convenience) · `partition` · `summarize` (counts + error lines) · `retry_failed` (re-run only the failures) |
 
 Recipes are pure data — they return playbook arrayrefs and never spawn anything, so they compose with `@{...}` splices and unit-test without a network.
 

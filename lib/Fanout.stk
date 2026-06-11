@@ -40,3 +40,34 @@ fn Fleet::Fanout::partition ($results) {
         failed => [grep { !$_->{ok} } @$results],
     }
 }
+
+## One-line-per-failure report over fan-out results:
+##   +{ total, ok, failed, errors => ["CMD: ERROR", ...] }
+fn Fleet::Fanout::summarize ($results) {
+    val $part = Fleet::Fanout::partition($results)
+    +{
+        total  => scalar(@$results),
+        ok     => scalar(@{ $part->{ok} }),
+        failed => scalar(@{ $part->{failed} }),
+        errors => [ map { "$_->{cmd}: " . ($_->{error} // "?") } @{ $part->{failed} } ],
+    }
+}
+
+## Re-run \@steps against just the failed entries of a previous fan-out,
+## in place: ok results pass through untouched, failed ones are replaced
+## by their re-run result (tagged retried => 1). Order is preserved.
+fn Fleet::Fanout::retry_failed ($results, $steps, $opts = undef) {
+    $opts //= +{}
+    Fleet::Playbook::validate($steps)
+    [
+        map {
+            if ($_->{ok}) {
+                $_
+            } else {
+                val $again = Fleet::Playbook::run($_->{cmd}, $steps, $opts)
+                $again->{retried} = 1
+                $again
+            }
+        } @$results
+    ]
+}

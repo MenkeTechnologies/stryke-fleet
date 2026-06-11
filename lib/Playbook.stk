@@ -12,7 +12,10 @@
 ##   +{ expect => qr/motd/, optional => 1 }        # timeout ≠ failure
 ##
 ## Step keys: expect, branches, send, send_matched, timeout (seconds,
-## default 30), name (for diagnostics), optional (continue on timeout).
+## default 30), name (for diagnostics), optional (continue on timeout),
+## retries (re-attempt a timed-out expect/branch N more times),
+## retry_send (string sent before each retry — a nudge like "\n"),
+## delay (seconds to sleep before the step runs; fractional ok).
 ## Every step must have at least one of expect / branches / send.
 
 package Fleet::Playbook
@@ -31,9 +34,36 @@ fn Fleet::Playbook::validate ($steps) {
         if (defined $st->{branches} && ref($st->{branches}) ne "ARRAY") {
             die "Fleet::Playbook: step $i branches must be an arrayref"
         }
+        if (defined $st->{retries} && ($st->{retries} !~ /^\d+$/ || $st->{retries} < 0)) {
+            die "Fleet::Playbook: step $i retries must be a non-negative integer"
+        }
+        if (defined $st->{delay} && $st->{delay} < 0) {
+            die "Fleet::Playbook: step $i delay must be >= 0"
+        }
         $i++
     }
     scalar @$steps
+}
+
+## Human-readable step listing — name, action, timeout per line. Pure:
+## validates but never spawns. Drives `fleet.stk` previews.
+fn Fleet::Playbook::dry_run ($steps) {
+    Fleet::Playbook::validate($steps)
+    var @lines
+    var $i = 0
+    for my $st (@$steps) {
+        val $name = $st->{name} // "step $i"
+        var @what
+        push @what, "expect " . ($st->{expect} // "")          if defined $st->{expect}
+        push @what, scalar(@{ $st->{branches} }) . " branches" if defined $st->{branches}
+        push @what, "send " . length($st->{send}) . "b"        if defined $st->{send}
+        push @what, "delay $st->{delay}s"                      if defined $st->{delay}
+        push @what, "retries $st->{retries}"                   if defined $st->{retries}
+        push @what, "optional"                                 if $st->{optional}
+        push @lines, sprintf("%2d  %-24s %s", $i, $name, join(", ", @what))
+        $i++
+    }
+    join("\n", @lines)
 }
 
 ## Run \@steps against CMD (string → session spawned here, hashref →
@@ -53,14 +83,26 @@ fn Fleet::Playbook::run ($cmd, $steps, $opts = undef) {
     var $err = undef
     for my $st (@$steps) {
         val $timeout = $st->{timeout} // ($opts->{timeout} // 30)
+        sleep $st->{delay} if defined $st->{delay} && $st->{delay} > 0
+        val $attempts = 1 + ($st->{retries} // 0)
         if (defined $st->{expect}) {
-            val $m = Fleet::Session::expect($s, $st->{expect}, $timeout)
+            var $m = undef
+            for var $try (1 .. $attempts) {
+                Fleet::Session::send($s, $st->{retry_send}) if $try > 1 && defined $st->{retry_send}
+                $m = Fleet::Session::expect($s, $st->{expect}, $timeout)
+                last if defined $m
+            }
             if (!defined $m && !$st->{optional}) {
                 $err = "timeout on " . ($st->{name} // "step $i")
                 last
             }
         } elsif (defined $st->{branches}) {
-            val $m = Fleet::Session::branch($s, $st->{branches}, $timeout)
+            var $m = undef
+            for var $try (1 .. $attempts) {
+                Fleet::Session::send($s, $st->{retry_send}) if $try > 1 && defined $st->{retry_send}
+                $m = Fleet::Session::branch($s, $st->{branches}, $timeout)
+                last if defined $m
+            }
             if (!defined $m && !$st->{optional}) {
                 $err = "timeout on " . ($st->{name} // "step $i")
                 last
