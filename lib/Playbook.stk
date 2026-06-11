@@ -6,7 +6,7 @@
 ##   +{ expect => qr/password:/, send => "$pw\n", timeout => 10 }
 ##   +{ send => "uptime\n" }                       # send-only
 ##   +{ expect => qr/\$/, name => "shell prompt" } # expect-only
-##   +{ branches => [+{re => qr/yes\/no/, do => sub { "yes\n" }},
+##   +{ branches => [+{re => qr/yes\/no/, do => fn { "yes\n" }},
 ##                   +{re => qr/password:/}],      # first match wins
 ##      send_matched => 1 }                        # send the branch result
 ##   +{ expect => qr/motd/, optional => 1 }        # timeout ≠ failure
@@ -16,6 +16,8 @@
 ## Every step must have at least one of expect / branches / send.
 
 package Fleet::Playbook
+
+use Fleet::Session
 
 ## Die unless \@steps is a well-formed playbook. Returns step count.
 fn Fleet::Playbook::validate ($steps) {

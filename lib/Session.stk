@@ -37,7 +37,7 @@ fn Fleet::Session::expect ($s, $pat, $timeout = undef) {
 }
 
 ## First-match-wins branch table — \@branches is
-## [+{re => qr/.../, do => sub {...}}, ...] (the `do` coderef is
+## [+{re => qr/.../, do => fn {...}}, ...] (the `do` coderef is
 ## optional). Returns the action's return value when present, else the
 ## matched text; undef on timeout.
 fn Fleet::Session::branch ($s, $branches, $timeout = undef) {

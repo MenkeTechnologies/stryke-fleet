@@ -13,9 +13,9 @@ assert_eq scalar(Fleet::modules()), 4, "Fleet::modules lists four sublibs"
 # ── Playbook::validate ───────────────────────────────────────────────
 assert_eq Fleet::Playbook::validate([+{ send => "x\n" }]), 1, "validate counts steps"
 assert_eq Fleet::Playbook::validate([]),                   0, "validate empty ok"
-assert_dies sub { Fleet::Playbook::validate("nope") },        "validate rejects non-arrayref"
-assert_dies sub { Fleet::Playbook::validate([+{}]) },         "validate rejects actionless step"
-assert_dies sub { Fleet::Playbook::validate([+{ branches => "x" }]) },
+assert_dies fn { Fleet::Playbook::validate("nope") },        "validate rejects non-arrayref"
+assert_dies fn { Fleet::Playbook::validate([+{}]) },         "validate rejects actionless step"
+assert_dies fn { Fleet::Playbook::validate([+{ branches => "x" }]) },
                                                               "validate rejects scalar branches"
 
 # ── Session round trip against cat ───────────────────────────────────
@@ -34,8 +34,8 @@ assert_eq $log->[2]{event}, "close",         "transcript event 2 is close"
 val $sb = Fleet::Session::open("cat")
 Fleet::Session::send($sb, "pick-two\n")
 val $picked = Fleet::Session::branch($sb, [
-    +{ re => qr/pick-one/, do => sub { "one" } },
-    +{ re => qr/pick-two/, do => sub { "two" } },
+    +{ re => qr/pick-one/, do => fn { "one" } },
+    +{ re => qr/pick-two/, do => fn { "two" } },
 ], 10)
 assert_eq $picked, "two", "branch table picks matching arm and runs action"
 Fleet::Session::close($sb)
@@ -75,7 +75,7 @@ val $rb = Fleet::Playbook::run("cat", [
     +{ send => "are-you-sure\n" },
     +{
         branches => [
-            +{ re => qr/are-you-sure/, do => sub { "yes\n" } },
+            +{ re => qr/are-you-sure/, do => fn { "yes\n" } },
             +{ re => qr/other/ },
         ],
         send_matched => 1,
@@ -95,14 +95,14 @@ assert_eq Fleet::Playbook::validate($ssh), 3,       "ssh_login validates as play
 
 val $sudo = Fleet::Recipes::sudo(+{ password => "pw" })
 assert_eq scalar(@$sudo), 2,           "sudo is 2 steps"
-assert_dies sub { Fleet::Recipes::sudo(+{}) }, "sudo dies without password"
+assert_dies fn { Fleet::Recipes::sudo(+{}) }, "sudo dies without password"
 
 assert_eq Fleet::Playbook::validate(Fleet::Recipes::psql(+{ password => "x" })),    2, "psql validates"
 assert_eq Fleet::Playbook::validate(Fleet::Recipes::mysql()),                       1, "mysql validates"
 assert_eq Fleet::Playbook::validate(Fleet::Recipes::redis_cli(+{ password => "x" })), 3, "redis_cli auth validates"
 assert_eq Fleet::Playbook::validate(Fleet::Recipes::yes_to_all(4)),                 4, "yes_to_all count honored"
 assert_eq Fleet::Playbook::validate(Fleet::Recipes::cisco_enable(+{ enable_password => "x" })), 4, "cisco_enable validates"
-assert_dies sub { Fleet::Recipes::cisco_enable(+{}) }, "cisco_enable dies without enable_password"
+assert_dies fn { Fleet::Recipes::cisco_enable(+{}) }, "cisco_enable dies without enable_password"
 assert_eq scalar(Fleet::Recipes::names()), 7, "recipe roster pinned at 7"
 
 # ── Fanout over local sessions ───────────────────────────────────────
@@ -121,6 +121,6 @@ val $part = Fleet::Fanout::partition($mixed)
 assert_eq scalar(@{ $part->{ok} }),     0, "partition: none ok"
 assert_eq scalar(@{ $part->{failed} }), 2, "partition: both failed"
 
-assert_dies sub { Fleet::Fanout::run("cat", [+{ send => "x" }]) }, "fanout rejects scalar cmds"
+assert_dies fn { Fleet::Fanout::run("cat", [+{ send => "x" }]) }, "fanout rejects scalar cmds"
 
 test_run
