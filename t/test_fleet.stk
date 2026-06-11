@@ -150,7 +150,39 @@ assert_eq scalar(@$dkr), 3,            "docker_login is 3 steps"
 assert_eq Fleet::Playbook::validate($dkr), 3, "docker_login validates"
 assert_dies fn { Fleet::Recipes::docker_login(+{ user => "u" }) }, "docker_login dies without password"
 
-assert_eq scalar(Fleet::Recipes::names()), 12, "recipe roster pinned at 12"
+val $scp = Fleet::Recipes::scp(+{ password => "pw" })
+assert_eq scalar(@$scp), 2,            "scp is 2 steps (host key + password)"
+assert_eq $scp->[1]{send}, "pw\n",     "scp sends password"
+assert_dies fn { Fleet::Recipes::scp(+{}) }, "scp dies without password"
+
+val $gpg = Fleet::Recipes::gpg_decrypt(+{ passphrase => "secret" })
+assert_eq scalar(@$gpg), 1,            "gpg_decrypt is 1 step"
+assert_eq $gpg->[0]{send}, "secret\n", "gpg_decrypt sends passphrase"
+assert_dies fn { Fleet::Recipes::gpg_decrypt(+{}) }, "gpg_decrypt dies without passphrase"
+
+val $ftp = Fleet::Recipes::ftp_login(+{ user => "anon", password => "pw" })
+assert_eq scalar(@$ftp), 3,            "ftp_login is 3 steps"
+assert_eq $ftp->[0]{send}, "anon\n",   "ftp_login sends name first"
+assert_eq Fleet::Playbook::validate($ftp), 3, "ftp_login validates"
+assert_dies fn { Fleet::Recipes::ftp_login(+{ user => "x" }) }, "ftp_login dies without password"
+
+val $pem = Fleet::Recipes::openssl_pem(+{ passphrase => "pp" })
+assert_eq scalar(@$pem), 2,            "openssl_pem is 2 steps (enter + verify)"
+assert_eq $pem->[0]{send}, "pp\n",     "openssl_pem sends passphrase"
+assert_eq $pem->[1]{send}, "pp\n",     "openssl_pem re-sends on verify"
+assert_dies fn { Fleet::Recipes::openssl_pem(+{}) }, "openssl_pem dies without passphrase"
+
+assert_eq scalar(@{ Fleet::Recipes::mongo(+{ password => "x" }) }), 2, "mongo with password is 2 steps"
+assert_eq scalar(@{ Fleet::Recipes::mongo() }),                     1, "mongo without password is 1 step"
+assert_eq Fleet::Playbook::validate(Fleet::Recipes::mongo()),       1, "mongo validates"
+
+val $npm = Fleet::Recipes::npm_login(+{ user => "u", password => "p", email => "e@x.io" })
+assert_eq scalar(@$npm), 3,            "npm_login is 3 steps"
+assert_eq $npm->[2]{send}, "e@x.io\n", "npm_login sends email last"
+assert_eq Fleet::Playbook::validate($npm), 3, "npm_login validates"
+assert_dies fn { Fleet::Recipes::npm_login(+{ user => "u", password => "p" }) }, "npm_login dies without email"
+
+assert_eq scalar(Fleet::Recipes::names()), 18, "recipe roster pinned at 18"
 
 # ── Fanout over local sessions ───────────────────────────────────────
 val $results = Fleet::Fanout::run(["cat", "cat", "cat"], [

@@ -103,7 +103,7 @@ p "ok: " . scalar(@{ $part->{ok} }) . "  failed: " . scalar(@{ $part->{failed} }
 |---|--------|------|----:|------------|
 | 1 | `Fleet::Session` | `lib/Session.stk` | 17 | `open` · `send` · `send_line` · `expect` · `branch` · `read` · `buffer` · `alive` · `eof` · `interact` · `close` · `transcript` · `events` · `matches` · `last_match` · `timed_out` · `transcript_text` |
 | 2 | `Fleet::Playbook` | `lib/Playbook.stk` | 3 | `validate` · `run` (step lists with `expect`/`send`/`branches`/`optional`/`send_matched`/`retries`/`retry_send`/`delay`) · `dry_run` (pure step preview) |
-| 3 | `Fleet::Recipes` | `lib/Recipes.stk` | 13 | `ssh_login` · `sudo` · `su` · `psql` · `mysql` · `redis_cli` · `yes_to_all` · `cisco_enable` · `telnet_login` · `sftp` · `passwd_change` · `docker_login` · `names` |
+| 3 | `Fleet::Recipes` | `lib/Recipes.stk` | 19 | `ssh_login` · `sudo` · `su` · `psql` · `mysql` · `redis_cli` · `mongo` · `yes_to_all` · `cisco_enable` · `telnet_login` · `sftp` · `scp` · `ftp_login` · `passwd_change` · `docker_login` · `npm_login` · `gpg_decrypt` · `openssl_pem` · `names` |
 | 4 | `Fleet::Fanout` | `lib/Fanout.stk` | 5 | `run` (N targets, `pmap`) · `ssh` (host-list convenience) · `partition` · `summarize` (counts + error lines) · `retry_failed` (re-run only the failures) |
 
 Recipes are pure data — they return playbook arrayrefs and never spawn anything, so they compose with `@{...}` splices and unit-test without a network.

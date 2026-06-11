@@ -248,8 +248,95 @@ fn Fleet::Recipes::docker_login ($opts) {
     ]
 }
 
+## scp: optional host-key confirmation then a password prompt — the
+## copy runs to completion on its own. opts: password (required), timeout.
+fn Fleet::Recipes::scp ($opts) {
+    die "Fleet::Recipes::scp: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{
+            name     => "host key",
+            expect   => qr/\(yes\/no(?:\/\[fingerprint\])?\)\?/,
+            send     => "yes\n",
+            timeout  => $timeout,
+            optional => 1,
+        },
+        +{ name => "scp password", expect => qr/[Pp]assword:/, send => $opts->{password} . "\n", timeout => $timeout },
+    ]
+}
+
+## gpg --decrypt / symmetric: answer the passphrase prompt. opts:
+## passphrase (required), timeout. gpg prompts on its tty/pinentry-curses.
+fn Fleet::Recipes::gpg_decrypt ($opts) {
+    die "Fleet::Recipes::gpg_decrypt: passphrase required" unless defined $opts->{passphrase}
+    val $timeout = $opts->{timeout} // 20
+    [
+        +{ name => "gpg passphrase", expect => qr/[Pp]assphrase/, send => $opts->{passphrase} . "\n", timeout => $timeout },
+    ]
+}
+
+## ftp interactive login: `Name:` → user, `Password:` → password, then
+## the `ftp>` prompt. opts: user (required), password (required), timeout.
+fn Fleet::Recipes::ftp_login ($opts) {
+    die "Fleet::Recipes::ftp_login: user required"     unless defined $opts->{user}
+    die "Fleet::Recipes::ftp_login: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{ name => "ftp name",     expect => qr/Name.*: ?/,     send => $opts->{user} . "\n",     timeout => $timeout },
+        +{ name => "ftp password", expect => qr/[Pp]assword: ?/, send => $opts->{password} . "\n", timeout => $timeout },
+        +{ name => "ftp prompt",   expect => qr/ftp> ?$/m, timeout => $timeout },
+    ]
+}
+
+## openssl PEM passphrase entry with verification — the classic
+## "Enter PEM pass phrase:" / "Verifying - Enter PEM pass phrase:"
+## dance (openssl genrsa -aes256, req, etc.). opts: passphrase
+## (required), timeout.
+fn Fleet::Recipes::openssl_pem ($opts) {
+    die "Fleet::Recipes::openssl_pem: passphrase required" unless defined $opts->{passphrase}
+    val $timeout = $opts->{timeout} // 15
+    [
+        +{ name => "pem passphrase", expect => qr/Enter PEM pass ?phrase:/i,            send => $opts->{passphrase} . "\n", timeout => $timeout },
+        +{ name => "pem verify",     expect => qr/Verifying.*Enter PEM pass ?phrase:/i, send => $opts->{passphrase} . "\n", timeout => $timeout },
+    ]
+}
+
+## mongo shell: optional password prompt, then the `>` / `rs0:PRIMARY>`
+## prompt. opts: password, timeout.
+fn Fleet::Recipes::mongo ($opts = undef) {
+    $opts //= +{}
+    val $timeout = $opts->{timeout} // 15
+    var @steps
+    if (defined $opts->{password}) {
+        push @steps, +{
+            name     => "mongo password",
+            expect   => qr/Enter password:/i,
+            send     => $opts->{password} . "\n",
+            timeout  => $timeout,
+            optional => 1,
+        }
+    }
+    push @steps, +{ name => "mongo prompt", expect => qr/>\s?$/m, timeout => $timeout }
+    [@steps]
+}
+
+## npm login (legacy interactive): Username / Password / Email prompts.
+## opts: user (required), password (required), email (required), timeout.
+fn Fleet::Recipes::npm_login ($opts) {
+    die "Fleet::Recipes::npm_login: user required"     unless defined $opts->{user}
+    die "Fleet::Recipes::npm_login: password required" unless defined $opts->{password}
+    die "Fleet::Recipes::npm_login: email required"    unless defined $opts->{email}
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{ name => "npm username", expect => qr/[Uu]sername: ?/, send => $opts->{user} . "\n",     timeout => $timeout },
+        +{ name => "npm password", expect => qr/[Pp]assword: ?/, send => $opts->{password} . "\n", timeout => $timeout },
+        +{ name => "npm email",    expect => qr/[Ee]mail.*: ?/,  send => $opts->{email} . "\n",    timeout => $timeout },
+    ]
+}
+
 ## All recipe names this sublib ships.
 fn Fleet::Recipes::names {
     qw(ssh_login sudo psql mysql redis_cli yes_to_all cisco_enable
-       su telnet_login sftp passwd_change docker_login)
+       su telnet_login sftp passwd_change docker_login
+       scp gpg_decrypt ftp_login openssl_pem mongo npm_login)
 }
