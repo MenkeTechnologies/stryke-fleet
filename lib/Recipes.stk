@@ -1,0 +1,153 @@
+## lib/Recipes.stk — `use Fleet::Recipes`
+##
+## Step-list generators for the interactive sessions everyone scripts
+## by hand: ssh login chains, sudo, database CLIs, yes/no installers,
+## network-gear enable mode. Each recipe returns a plain playbook
+## arrayref — pure data, composable with `@{...}` splices:
+##
+##   val @steps = (@{ Fleet::Recipes::ssh_login(+{password => $pw}) },
+##                 +{ send => "uptime\n" },
+##                 +{ expect => qr/\$/ })
+##   Fleet::Playbook::run("ssh user\@host", \@steps)
+##
+## Recipes never spawn anything themselves — they only build steps, so
+## they are unit-testable without a network or a target host.
+
+package Fleet::Recipes
+
+## SSH login: optional host-key confirmation, optional password prompt,
+## then a shell prompt. opts: password, prompt (qr//, default qr/[$#%>] ?$/m),
+## timeout.
+fn Fleet::Recipes::ssh_login ($opts = undef) {
+    $opts //= +{}
+    val $prompt  = $opts->{prompt}  // qr/[\$#%>] ?$/m
+    val $timeout = $opts->{timeout} // 30
+    var @steps = (
+        +{
+            name     => "host key / password",
+            branches => [
+                +{ re => qr/\(yes\/no(?:\/\[fingerprint\])?\)\?/, do => sub { "yes\n" } },
+                +{ re => qr/[Pp]assword:/ },
+                +{ re => $prompt },
+            ],
+            send_matched => 0,
+            timeout      => $timeout,
+            optional     => 1,
+        },
+    )
+    if (defined $opts->{password}) {
+        push @steps, +{
+            name     => "password",
+            expect   => qr/[Pp]assword:/,
+            send     => $opts->{password} . "\n",
+            timeout  => $timeout,
+            optional => 1,
+        }
+    }
+    push @steps, +{ name => "shell prompt", expect => $prompt, timeout => $timeout }
+    [@steps]
+}
+
+## sudo: answer the password prompt, then expect PROMPT. opts: password
+## (required), prompt, timeout.
+fn Fleet::Recipes::sudo ($opts) {
+    die "Fleet::Recipes::sudo: password required" unless defined $opts->{password}
+    val $prompt = $opts->{prompt} // qr/[\$#%>] ?$/m
+    [
+        +{
+            name    => "sudo password",
+            expect  => qr/\[sudo\] password|[Pp]assword:/,
+            send    => $opts->{password} . "\n",
+            timeout => $opts->{timeout} // 15,
+        },
+        +{ name => "post-sudo prompt", expect => $prompt, timeout => $opts->{timeout} // 15 },
+    ]
+}
+
+## psql: optional password prompt, then the `db=#` prompt. opts:
+## password, timeout.
+fn Fleet::Recipes::psql ($opts = undef) {
+    $opts //= +{}
+    var @steps
+    if (defined $opts->{password}) {
+        push @steps, +{
+            name     => "psql password",
+            expect   => qr/Password.*:/,
+            send     => $opts->{password} . "\n",
+            timeout  => $opts->{timeout} // 15,
+            optional => 1,
+        }
+    }
+    push @steps, +{ name => "psql prompt", expect => qr/=[#>] ?$/m, timeout => $opts->{timeout} // 15 }
+    [@steps]
+}
+
+## mysql: optional password prompt, then the `mysql>` prompt. opts:
+## password, timeout.
+fn Fleet::Recipes::mysql ($opts = undef) {
+    $opts //= +{}
+    var @steps
+    if (defined $opts->{password}) {
+        push @steps, +{
+            name     => "mysql password",
+            expect   => qr/Enter password:/,
+            send     => $opts->{password} . "\n",
+            timeout  => $opts->{timeout} // 15,
+            optional => 1,
+        }
+    }
+    push @steps, +{ name => "mysql prompt", expect => qr/mysql> ?$/m, timeout => $opts->{timeout} // 15 }
+    [@steps]
+}
+
+## redis-cli: expect the `host:port>` prompt; optional AUTH. opts:
+## password, timeout.
+fn Fleet::Recipes::redis_cli ($opts = undef) {
+    $opts //= +{}
+    val $timeout = $opts->{timeout} // 15
+    var @steps = ( +{ name => "redis prompt", expect => qr/:\d+> ?$/m, timeout => $timeout } )
+    if (defined $opts->{password}) {
+        push @steps,
+            +{ name => "auth",    send   => "AUTH " . $opts->{password} . "\n" },
+            +{ name => "auth ok", expect => qr/OK/, timeout => $timeout }
+    }
+    [@steps]
+}
+
+## Interactive installers: answer up to COUNT yes/no-style prompts with
+## ANSWER (default "y"), tolerating runs that ask fewer questions.
+fn Fleet::Recipes::yes_to_all ($count = undef, $answer = undef) {
+    $count //= 10
+    $answer //= "y"
+    [
+        map {
+            +{
+                name     => "prompt $_",
+                expect   => qr/\[[YyNn]\/[YyNn]\]|\(y(?:es)?\/no?\)|\? ?$/m,
+                send     => $answer . "\n",
+                optional => 1,
+                timeout  => 5,
+            }
+        } 1 .. $count
+    ]
+}
+
+## Cisco-style enable mode: `>` prompt → enable → password → `#`. opts:
+## enable_password (required), timeout.
+fn Fleet::Recipes::cisco_enable ($opts) {
+    unless (defined $opts->{enable_password}) {
+        die "Fleet::Recipes::cisco_enable: enable_password required"
+    }
+    val $timeout = $opts->{timeout} // 15
+    [
+        +{ name => "exec prompt",     expect => qr/> ?$/m, timeout => $timeout },
+        +{ name => "enable",          send   => "enable\n" },
+        +{ name => "enable password", expect => qr/[Pp]assword:/, send => $opts->{enable_password} . "\n", timeout => $timeout },
+        +{ name => "priv prompt",     expect => qr/# ?$/m, timeout => $timeout },
+    ]
+}
+
+## All recipe names this sublib ships.
+fn Fleet::Recipes::names {
+    qw(ssh_login sudo psql mysql redis_cli yes_to_all cisco_enable)
+}

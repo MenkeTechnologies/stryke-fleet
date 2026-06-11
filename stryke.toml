@@ -1,0 +1,15 @@
+[package]
+name = "stryke-fleet"
+version = "0.1.0"
+description = "Parallel expect/PTY automation: playbooks, recipes, and multi-host fan-out over stryke's pty_* builtins and pmap. No cdylib, no helper binary — just .stk modules loaded on `use Fleet`."
+authors = ["MenkeTechnologies"]
+license = "MIT"
+repository = "https://github.com/MenkeTechnologies/stryke-fleet"
+edition = "2026"
+
+# Pure-stryke package — no [ffi] table, no cdylib. Everything lives in
+# lib/*.stk and is resolved by stryke's normal package loader.
+
+[scripts]
+test    = "s test t/"
+install = "s pkg install -g ."

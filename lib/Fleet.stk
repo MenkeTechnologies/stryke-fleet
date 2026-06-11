@@ -1,0 +1,31 @@
+## lib/Fleet.stk — `use Fleet` umbrella for stryke-fleet.
+##
+## Pure-stryke package. Parallel expect/PTY automation on top of the
+## pty_* builtins (`pty_spawn`, `pty_expect`, `pty_expect_table`, …)
+## and `pmap`. Tcl/Expect's spawn/expect/send loop, plus the thing
+## Expect never had: native fan-out across N sessions at once.
+##
+##   use Fleet
+##   val $r = Fleet::Playbook::run("ssh db1", Fleet::Recipes::ssh_login(+{password => $pw}))
+##   val $all = Fleet::Fanout::run([map { "ssh $_" } @hosts], \@steps)
+##
+## The interactive primitives themselves (`pty_spawn`, `pty_send`,
+## `pty_expect`, `pty_expect_table`, `pty_interact`, …) are stryke
+## builtins — this package is the orchestration layer: transcripted
+## sessions, declarative step lists, a recipe corpus, and parallel
+## multi-host execution.
+
+package Fleet
+
+use Fleet::Session
+use Fleet::Playbook
+use Fleet::Recipes
+use Fleet::Fanout
+
+## Package version (single source of truth for the umbrella + sublibs).
+fn Fleet::version { "0.1.0" }
+
+## All sublibrary names, in load order.
+fn Fleet::modules {
+    qw(Fleet::Session Fleet::Playbook Fleet::Recipes Fleet::Fanout)
+}

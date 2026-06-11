@@ -1,0 +1,79 @@
+## lib/Session.stk — `use Fleet::Session`
+##
+## Transcripted PTY session: a hashref wrapping the raw pty_* handle
+## that records every send and every match, so a finished session can
+## be audited (`transcript`) or dumped on failure. The bare builtins
+## stay available — this layer only adds bookkeeping.
+##
+##   val $s = Fleet::Session::open("ssh user\@host")
+##   Fleet::Session::expect($s, qr/password:/, 10)
+##   Fleet::Session::send($s, "$pw\n")
+##   Fleet::Session::close($s)
+##   p $_->{event} . " " . $_->{data} for @{ Fleet::Session::transcript($s) }
+
+package Fleet::Session
+
+## Spawn CMD under a PTY. Returns the session hashref:
+## +{ raw => <pty handle>, cmd => CMD, log => [] }.
+fn Fleet::Session::open ($cmd) {
+    +{ raw => pty_spawn($cmd), cmd => $cmd, log => [] }
+}
+
+## Send text to the session's stdin. Logged as a `send` event.
+fn Fleet::Session::send ($s, $text) {
+    push @{ $s->{log} }, +{ event => "send", data => $text }
+    pty_send($s->{raw}, $text)
+}
+
+## Wait for PATTERN (qr// or string) in the output. Returns the matched
+## text, or undef on timeout. Both outcomes are logged.
+fn Fleet::Session::expect ($s, $pat, $timeout = undef) {
+    $timeout //= 30
+    val $m = pty_expect($s->{raw}, $pat, $timeout)
+    push @{ $s->{log} },
+        defined $m ? +{ event => "match",   data => $m }
+                   : +{ event => "timeout", data => "$pat" }
+    $m
+}
+
+## First-match-wins branch table — \@branches is
+## [+{re => qr/.../, do => sub {...}}, ...] (the `do` coderef is
+## optional). Returns the action's return value when present, else the
+## matched text; undef on timeout.
+fn Fleet::Session::branch ($s, $branches, $timeout = undef) {
+    $timeout //= 30
+    val $hit = pty_expect_table($s->{raw}, $branches, $timeout)
+    unless (defined $hit) {
+        push @{ $s->{log} }, +{ event => "timeout", data => "branch" }
+        return undef
+    }
+    push @{ $s->{log} }, +{ event => "match", data => $hit->{matched} }
+    val $action = $hit->{action}
+    return $hit->{matched} unless ref($action) eq "CODE"
+    $action->($hit->{matched})
+}
+
+## Drain whatever output is buffered right now (non-matching read).
+fn Fleet::Session::read ($s, $timeout = undef) { pty_read($s->{raw}, $timeout // 5) }
+
+## Current unconsumed output buffer.
+fn Fleet::Session::buffer ($s) { pty_buffer($s->{raw}) }
+
+## Process still running?
+fn Fleet::Session::alive ($s) { pty_alive($s->{raw}) }
+
+## Child closed its side?
+fn Fleet::Session::eof ($s) { pty_eof($s->{raw}) }
+
+## Hand the PTY to the user (debugging).
+fn Fleet::Session::interact ($s) { pty_interact($s->{raw}) }
+
+## Kill the child and release the PTY. Logged as a `close` event.
+fn Fleet::Session::close ($s) {
+    push @{ $s->{log} }, +{ event => "close", data => $s->{cmd} }
+    pty_close($s->{raw})
+}
+
+## The ordered event log: arrayref of +{event, data} hashrefs, where
+## event is one of send / match / timeout / close.
+fn Fleet::Session::transcript ($s) { $s->{log} }

@@ -1,0 +1,83 @@
+## lib/Playbook.stk — `use Fleet::Playbook`
+##
+## Declarative expect/send automation. A playbook is an arrayref of
+## step hashrefs executed in order against one PTY session:
+##
+##   +{ expect => qr/password:/, send => "$pw\n", timeout => 10 }
+##   +{ send => "uptime\n" }                       # send-only
+##   +{ expect => qr/\$/, name => "shell prompt" } # expect-only
+##   +{ branches => [+{re => qr/yes\/no/, do => sub { "yes\n" }},
+##                   +{re => qr/password:/}],      # first match wins
+##      send_matched => 1 }                        # send the branch result
+##   +{ expect => qr/motd/, optional => 1 }        # timeout ≠ failure
+##
+## Step keys: expect, branches, send, send_matched, timeout (seconds,
+## default 30), name (for diagnostics), optional (continue on timeout).
+## Every step must have at least one of expect / branches / send.
+
+package Fleet::Playbook
+
+## Die unless \@steps is a well-formed playbook. Returns step count.
+fn Fleet::Playbook::validate ($steps) {
+    die "Fleet::Playbook: steps must be an arrayref" unless ref($steps) eq "ARRAY"
+    var $i = 0
+    for my $st (@$steps) {
+        die "Fleet::Playbook: step $i is not a hashref" unless ref($st) eq "HASH"
+        unless (defined $st->{expect} || defined $st->{branches} || defined $st->{send}) {
+            die "Fleet::Playbook: step $i needs expect, branches, or send"
+        }
+        if (defined $st->{branches} && ref($st->{branches}) ne "ARRAY") {
+            die "Fleet::Playbook: step $i branches must be an arrayref"
+        }
+        $i++
+    }
+    scalar @$steps
+}
+
+## Run \@steps against CMD (string → session spawned here, hashref →
+## an already-open Fleet::Session). Returns the result hashref:
+##
+##   +{ ok => 0|1, cmd, steps_run, transcript,
+##      failed_step => N, error => "..." }      # only when ok == 0
+##
+## A non-optional expect/branch timeout fails the run; the session is
+## always closed (unless the caller passed it in already open).
+fn Fleet::Playbook::run ($cmd, $steps, $opts = undef) {
+    $opts //= +{}
+    Fleet::Playbook::validate($steps)
+    val $own = ref($cmd) ne "HASH"
+    val $s   = $own ? Fleet::Session::open($cmd) : $cmd
+    var $i   = 0
+    var $err = undef
+    for my $st (@$steps) {
+        val $timeout = $st->{timeout} // ($opts->{timeout} // 30)
+        if (defined $st->{expect}) {
+            val $m = Fleet::Session::expect($s, $st->{expect}, $timeout)
+            if (!defined $m && !$st->{optional}) {
+                $err = "timeout on " . ($st->{name} // "step $i")
+                last
+            }
+        } elsif (defined $st->{branches}) {
+            val $m = Fleet::Session::branch($s, $st->{branches}, $timeout)
+            if (!defined $m && !$st->{optional}) {
+                $err = "timeout on " . ($st->{name} // "step $i")
+                last
+            }
+            Fleet::Session::send($s, $m) if defined $m && $st->{send_matched}
+        }
+        Fleet::Session::send($s, $st->{send}) if defined $st->{send}
+        $i++
+    }
+    Fleet::Session::close($s) if $own
+    val $r = +{
+        ok         => defined $err ? 0 : 1,
+        cmd        => $s->{cmd},
+        steps_run  => $i,
+        transcript => Fleet::Session::transcript($s),
+    }
+    if (defined $err) {
+        $r->{failed_step} = $i
+        $r->{error}       = $err
+    }
+    $r
+}

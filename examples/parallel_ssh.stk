@@ -1,0 +1,23 @@
+#!/usr/bin/env stryke
+# examples/parallel_ssh.stk — the headline use case: one login recipe,
+# N hosts, parallel PTY sessions, partitioned results.
+#
+#   FLEET_HOSTS="web1 web2 db1" FLEET_PASS=... stryke examples/parallel_ssh.stk
+
+use Fleet
+
+val @hosts = split " ", ($ENV{FLEET_HOSTS} // "")
+die "set FLEET_HOSTS to a space-separated host list\n" unless @hosts
+
+val @steps = (
+    @{ Fleet::Recipes::ssh_login(+{ password => $ENV{FLEET_PASS} }) },
+    +{ send   => "uname -a; uptime\n" },
+    +{ expect => qr/load average/, timeout => 15, name => "uptime output" },
+    +{ send   => "exit\n" },
+)
+
+val $results = Fleet::Fanout::ssh([@hosts], [@steps], +{ ssh_opts => "-o BatchMode=no" })
+val $part    = Fleet::Fanout::partition($results)
+
+p "ok:     " . join(", ", map { $_->{cmd} } @{ $part->{ok} })
+p "failed: " . join(", ", map { "$_->{cmd} ($_->{error})" } @{ $part->{failed} })

@@ -1,0 +1,14 @@
+#!/usr/bin/env stryke
+# examples/local_demo.stk — runnable anywhere, no network: drives a
+# local `sh` through a playbook and prints the transcript.
+
+use Fleet
+
+val $r = Fleet::Playbook::run("sh", [
+    +{ send   => "echo fleet-$$\n" },
+    +{ expect => qr/fleet-\d+/, timeout => 10, name => "echo back" },
+    +{ send   => "exit\n" },
+])
+
+p $r->{ok} ? "ok — " . $r->{steps_run} . " steps" : "failed: " . $r->{error}
+p sprintf("%-8s %s", $_->{event}, $_->{data} =~ s/\n/\\n/gr) for @{ $r->{transcript} }

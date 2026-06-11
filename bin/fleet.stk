@@ -1,0 +1,67 @@
+#!/usr/bin/env stryke
+# bin/fleet.stk — CLI front-end for the stryke `Fleet` package.
+#
+# Pure stryke — no helper binary involved. One-shot expect/send loops
+# from the shell; anything bigger belongs in a playbook script.
+#
+# Subcommands:
+#   fleet expect CMD PATTERN [TIMEOUT]          # spawn, wait, print match
+#   fleet exchange CMD SEND PATTERN [TIMEOUT]   # spawn, send, wait, print match
+#   fleet recipes                               # list the recipe corpus
+#   fleet version
+#   fleet help
+
+my @_p = split "/", __FILE__
+pop @_p
+pop @_p
+my $_root = join("/", @_p)
+$_root = "." if $_root eq ""
+require $_root . "/lib/Fleet.stk"
+
+use Fleet
+
+fn Fleet::CLI::usage {
+    p "usage: fleet <subcommand> [args]"
+    p ""
+    p "  expect CMD PATTERN [TIMEOUT]        spawn CMD, wait for PATTERN, print the match"
+    p "  exchange CMD SEND PATTERN [TIMEOUT] spawn CMD, send SEND, wait for PATTERN"
+    p "  recipes                             list Fleet::Recipes generators"
+    p "  version                             package version"
+}
+
+my @argv = @ARGV
+if (@argv == 0) {
+    Fleet::CLI::usage()
+    exit 1
+}
+my $sub = shift @argv
+
+if ($sub eq "help" || $sub eq "-h" || $sub eq "--help") {
+    Fleet::CLI::usage()
+
+} elsif ($sub eq "version") {
+    p Fleet::version()
+
+} elsif ($sub eq "recipes") {
+    p "Fleet::Recipes::$_" for Fleet::Recipes::names()
+
+} elsif ($sub eq "expect") {
+    die "fleet expect: missing CMD PATTERN\n" unless @argv >= 2
+    val $timeout = @argv >= 3 ? $argv[2] + 0 : 30
+    val $r = Fleet::Playbook::run($argv[0], [+{ expect => $argv[1], timeout => $timeout }])
+    die "fleet expect: " . $r->{error} . "\n" unless $r->{ok}
+    p $_->{data} for grep { $_->{event} eq "match" } @{ $r->{transcript} }
+
+} elsif ($sub eq "exchange") {
+    die "fleet exchange: missing CMD SEND PATTERN\n" unless @argv >= 3
+    val $timeout = @argv >= 4 ? $argv[3] + 0 : 30
+    val $r = Fleet::Playbook::run($argv[0], [
+        +{ send   => $argv[1] . "\n" },
+        +{ expect => $argv[2], timeout => $timeout },
+    ])
+    die "fleet exchange: " . $r->{error} . "\n" unless $r->{ok}
+    p $_->{data} for grep { $_->{event} eq "match" } @{ $r->{transcript} }
+
+} else {
+    die "fleet: unknown subcommand `$sub` (try `fleet help`)\n"
+}

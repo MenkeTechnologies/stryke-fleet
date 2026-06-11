@@ -1,0 +1,126 @@
+## t/test_fleet.stk — assertion tests for the stryke-fleet package.
+##
+## Headless-CI safe: every PTY test spawns local `cat` / `sh` — no
+## network, no SSH, no target hosts. Recipes are pure data and are
+## asserted structurally.
+
+use Fleet
+
+# ── version / modules ────────────────────────────────────────────────
+assert_match qr/^\d+\.\d+\.\d+$/, Fleet::version(), "Fleet::version is semver"
+assert_eq scalar(Fleet::modules()), 4, "Fleet::modules lists four sublibs"
+
+# ── Playbook::validate ───────────────────────────────────────────────
+assert_eq Fleet::Playbook::validate([+{ send => "x\n" }]), 1, "validate counts steps"
+assert_eq Fleet::Playbook::validate([]),                   0, "validate empty ok"
+assert_dies sub { Fleet::Playbook::validate("nope") },        "validate rejects non-arrayref"
+assert_dies sub { Fleet::Playbook::validate([+{}]) },         "validate rejects actionless step"
+assert_dies sub { Fleet::Playbook::validate([+{ branches => "x" }]) },
+                                                              "validate rejects scalar branches"
+
+# ── Session round trip against cat ───────────────────────────────────
+val $s = Fleet::Session::open("cat")
+Fleet::Session::send($s, "echo-me\n")
+assert_eq Fleet::Session::expect($s, qr/echo-me/, 10), "echo-me", "session expect matches echo"
+assert_ok Fleet::Session::alive($s),                              "session alive"
+Fleet::Session::close($s)
+val $log = Fleet::Session::transcript($s)
+assert_eq scalar(@$log), 3,                  "transcript has send+match+close"
+assert_eq $log->[0]{event}, "send",          "transcript event 0 is send"
+assert_eq $log->[1]{event}, "match",         "transcript event 1 is match"
+assert_eq $log->[2]{event}, "close",         "transcript event 2 is close"
+
+# ── Session branch table ─────────────────────────────────────────────
+val $sb = Fleet::Session::open("cat")
+Fleet::Session::send($sb, "pick-two\n")
+val $picked = Fleet::Session::branch($sb, [
+    +{ re => qr/pick-one/, do => sub { "one" } },
+    +{ re => qr/pick-two/, do => sub { "two" } },
+], 10)
+assert_eq $picked, "two", "branch table picks matching arm and runs action"
+Fleet::Session::close($sb)
+
+# ── Playbook run: ok path ────────────────────────────────────────────
+val $r = Fleet::Playbook::run("cat", [
+    +{ send => "alpha\n" },
+    +{ expect => qr/alpha/, timeout => 10, name => "alpha echo" },
+    +{ send => "beta\n" },
+    +{ expect => qr/beta/,  timeout => 10, name => "beta echo" },
+])
+assert_ok $r->{ok},            "playbook ok"
+assert_eq $r->{steps_run}, 4,  "playbook ran all four steps"
+assert_eq $r->{cmd}, "cat",    "playbook records cmd"
+assert_ok scalar(grep { $_->{event} eq "match" && $_->{data} eq "alpha" } @{ $r->{transcript} }),
+          "transcript captured alpha match"
+
+# ── Playbook run: timeout fails the run ──────────────────────────────
+val $rt = Fleet::Playbook::run("cat", [
+    +{ expect => qr/never-appears/, timeout => 1, name => "ghost" },
+])
+assert_ok !$rt->{ok},                      "timeout playbook not ok"
+assert_eq $rt->{failed_step}, 0,           "failed_step is 0"
+assert_match qr/timeout on ghost/, $rt->{error}, "error names the step"
+
+# ── Playbook run: optional timeout continues ─────────────────────────
+val $ro = Fleet::Playbook::run("cat", [
+    +{ expect => qr/never-appears/, timeout => 1, optional => 1 },
+    +{ send => "still-here\n" },
+    +{ expect => qr/still-here/, timeout => 10 },
+])
+assert_ok $ro->{ok},           "optional timeout does not fail run"
+assert_eq $ro->{steps_run}, 3, "all steps ran past optional timeout"
+
+# ── Playbook run: branches + send_matched ────────────────────────────
+val $rb = Fleet::Playbook::run("cat", [
+    +{ send => "are-you-sure\n" },
+    +{
+        branches => [
+            +{ re => qr/are-you-sure/, do => sub { "yes\n" } },
+            +{ re => qr/other/ },
+        ],
+        send_matched => 1,
+        timeout      => 10,
+    },
+    +{ expect => qr/yes/, timeout => 10 },
+])
+assert_ok $rb->{ok}, "branch playbook with send_matched ok"
+
+# ── Recipes are pure data ────────────────────────────────────────────
+val $ssh = Fleet::Recipes::ssh_login(+{ password => "pw" })
+assert_eq ref($ssh), "ARRAY",                       "ssh_login returns arrayref"
+assert_eq scalar(@$ssh), 3,                         "ssh_login with password is 3 steps"
+assert_eq $ssh->[1]{send}, "pw\n",                  "ssh_login sends password + newline"
+assert_eq scalar(@{ Fleet::Recipes::ssh_login() }), 2, "ssh_login without password is 2 steps"
+assert_eq Fleet::Playbook::validate($ssh), 3,       "ssh_login validates as playbook"
+
+val $sudo = Fleet::Recipes::sudo(+{ password => "pw" })
+assert_eq scalar(@$sudo), 2,           "sudo is 2 steps"
+assert_dies sub { Fleet::Recipes::sudo(+{}) }, "sudo dies without password"
+
+assert_eq Fleet::Playbook::validate(Fleet::Recipes::psql(+{ password => "x" })),    2, "psql validates"
+assert_eq Fleet::Playbook::validate(Fleet::Recipes::mysql()),                       1, "mysql validates"
+assert_eq Fleet::Playbook::validate(Fleet::Recipes::redis_cli(+{ password => "x" })), 3, "redis_cli auth validates"
+assert_eq Fleet::Playbook::validate(Fleet::Recipes::yes_to_all(4)),                 4, "yes_to_all count honored"
+assert_eq Fleet::Playbook::validate(Fleet::Recipes::cisco_enable(+{ enable_password => "x" })), 4, "cisco_enable validates"
+assert_dies sub { Fleet::Recipes::cisco_enable(+{}) }, "cisco_enable dies without enable_password"
+assert_eq scalar(Fleet::Recipes::names()), 7, "recipe roster pinned at 7"
+
+# ── Fanout over local sessions ───────────────────────────────────────
+val $results = Fleet::Fanout::run(["cat", "cat", "cat"], [
+    +{ send => "ping\n" },
+    +{ expect => qr/ping/, timeout => 10 },
+])
+assert_eq scalar(@$results), 3,                "fanout returns one result per target"
+assert_ok $results->[0]{ok} && $results->[1]{ok} && $results->[2]{ok},
+                                               "all fanout targets ok"
+
+val $mixed = Fleet::Fanout::run(["cat", "cat"], [
+    +{ expect => qr/never/, timeout => 1 },
+])
+val $part = Fleet::Fanout::partition($mixed)
+assert_eq scalar(@{ $part->{ok} }),     0, "partition: none ok"
+assert_eq scalar(@{ $part->{failed} }), 2, "partition: both failed"
+
+assert_dies sub { Fleet::Fanout::run("cat", [+{ send => "x" }]) }, "fanout rejects scalar cmds"
+
+test_run

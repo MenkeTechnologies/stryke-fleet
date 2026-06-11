@@ -1,0 +1,15 @@
+#!/usr/bin/env stryke
+# examples/installer_autopilot.stk — answer an interactive installer's
+# prompts. Simulated locally with `sh` so the example runs anywhere.
+
+use Fleet
+
+# Fake "installer" that asks two questions.
+val $installer = q{sh -c 'printf "Continue? (y/n) "; read a; printf "Accept license? (y/n) "; read b; echo done-$a-$b'}
+
+val $r = Fleet::Playbook::run($installer, [
+    @{ Fleet::Recipes::yes_to_all(2) },
+    +{ expect => qr/done-y-y/, timeout => 10, name => "installer finished" },
+])
+
+p $r->{ok} ? "installer driven to completion" : "failed: " . $r->{error}

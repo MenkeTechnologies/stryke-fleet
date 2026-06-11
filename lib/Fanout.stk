@@ -1,0 +1,42 @@
+## lib/Fanout.stk — `use Fleet::Fanout`
+##
+## The part Tcl/Expect never had: run one playbook against N targets
+## in parallel. Each target gets its own PTY session on its own thread
+## (stryke `pmap`); results come back in target order.
+##
+##   # 50 hosts, one playbook, wall-clock of the slowest host:
+##   val $results = Fleet::Fanout::run(
+##       [map { "ssh $_" } @hosts],
+##       Fleet::Recipes::ssh_login(+{password => $pw}),
+##   )
+##   p "$_->{cmd}: " . ($_->{ok} ? "ok" : $_->{error}) for @$results
+
+package Fleet::Fanout
+
+## Run \@steps against every command in \@cmds concurrently. Returns an
+## arrayref of Fleet::Playbook::run result hashrefs, in \@cmds order.
+## opts are passed through to Playbook::run (e.g. +{timeout => 10}).
+fn Fleet::Fanout::run ($cmds, $steps, $opts = undef) {
+    $opts //= +{}
+    die "Fleet::Fanout: cmds must be an arrayref" unless ref($cmds) eq "ARRAY"
+    Fleet::Playbook::validate($steps)
+    [ pmap { Fleet::Playbook::run($_, $steps, $opts) } @$cmds ]
+}
+
+## ssh convenience: fan \@steps out over \@hosts as `ssh HOST`. opts:
+## user (login name), ssh_opts (extra flags string), plus Playbook opts.
+fn Fleet::Fanout::ssh ($hosts, $steps, $opts = undef) {
+    $opts //= +{}
+    die "Fleet::Fanout: hosts must be an arrayref" unless ref($hosts) eq "ARRAY"
+    val $flags = defined $opts->{ssh_opts} ? $opts->{ssh_opts} . " " : ""
+    val $user  = defined $opts->{user}     ? $opts->{user} . "@"     : ""
+    Fleet::Fanout::run([map { "ssh ${flags}${user}$_" } @$hosts], $steps, $opts)
+}
+
+## Partition an arrayref of fan-out results: +{ok => [...], failed => [...]}.
+fn Fleet::Fanout::partition ($results) {
+    +{
+        ok     => [grep {  $_->{ok} } @$results],
+        failed => [grep { !$_->{ok} } @$results],
+    }
+}
