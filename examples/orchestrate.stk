@@ -1,0 +1,39 @@
+#!/usr/bin/env stryke
+# examples/orchestrate.stk — the four layers in one flow, no network.
+#
+# Composes Recipes -> Playbook -> Session transcript -> Fanout against
+# local `cat` processes, then prints a transcript and a fan-out summary.
+# The same composition is pinned in t/test_fleet.stk under "Integration".
+#
+# Run:   s examples/orchestrate.stk
+
+use Fleet
+
+# 1. A recipe spliced into a larger playbook — pure data, composable.
+val @plan = ( @{ Fleet::Recipes::yes_to_all(2) }, +{ send => "go\n" } )
+p "spliced playbook: " . Fleet::Playbook::validate(\@plan) . " steps"
+p ""
+
+# 2. Drive one cat session and inspect its transcript.
+val $s = Fleet::Session::open("cat")
+Fleet::Session::send_line($s, "alpha")
+Fleet::Session::expect($s, qr/alpha/, 10)
+Fleet::Session::send_line($s, "beta")
+Fleet::Session::expect($s, qr/beta/, 10)
+p "matches    : " . join(", ", @{ Fleet::Session::matches($s) })
+p "last match : " . Fleet::Session::last_match($s)
+p "timed out  : " . (Fleet::Session::timed_out($s) ? "yes" : "no")
+Fleet::Session::close($s)
+p ""
+p "transcript:"
+p "  " . ($_ =~ s/\n/ /gr) for split /\n/, Fleet::Session::transcript_text($s)
+p ""
+
+# 3. Fan one playbook out over three cat targets; summarize.
+val $res = Fleet::Fanout::run(["cat", "cat", "cat"], [
+    +{ send => "ping\n" },
+    +{ expect => qr/ping/, timeout => 5, name => "echo" },
+])
+val $sum = Fleet::Fanout::summarize($res)
+p sprintf("fanout: %d targets, %d ok, %d failed", $sum->{total}, $sum->{ok}, $sum->{failed})
+p "  $_" for @{ $sum->{errors} }

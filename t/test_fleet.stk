@@ -250,4 +250,47 @@ val $all_ok = Fleet::Fanout::run(["cat"], [ +{ send => "fine\n" } ])
 val $untouched = Fleet::Fanout::retry_failed($all_ok, [ +{ send => "x\n" } ])
 assert_ok !$untouched->[0]{retried},   "retry_failed leaves ok entries untouched"
 
+# ── Integration: recipes + playbook + transcript + fanout together ───
+# Exercises the four layers in one flow on local processes only — the
+# interactions the per-layer tests don't cover.
+
+# 1. Splice a pure recipe into a larger playbook; it validates as one.
+val @plan = ( @{ Fleet::Recipes::yes_to_all(2) }, +{ send => "go\n" } )
+assert_eq Fleet::Playbook::validate(\@plan), 3, "integration: recipe splice validates as a playbook"
+
+# 2. Session transcript inspection over a real cat round trip.
+val $s = Fleet::Session::open("cat")
+Fleet::Session::send_line($s, "alpha")
+Fleet::Session::expect($s, qr/alpha/, 10)
+Fleet::Session::send_line($s, "beta")
+Fleet::Session::expect($s, qr/beta/, 10)
+assert_eq join(",", @{ Fleet::Session::matches($s) }), "alpha,beta", "integration: matches recorded in order"
+assert_eq Fleet::Session::last_match($s),               "beta",       "integration: last_match is most recent"
+assert_ok !Fleet::Session::timed_out($s),                             "integration: no timeout on clean run"
+assert_eq scalar(@{ Fleet::Session::events($s, "send") }), 2,         "integration: two send events"
+Fleet::Session::close($s)
+assert_match qr/close\tcat/, Fleet::Session::transcript_text($s),     "integration: transcript_text shows close"
+
+# 3. Fanout summarize over an all-ok run and an all-fail run. (A mixed
+# run is avoided: the PTY line discipline echoes input, so a dead target
+# still "matches" an input-derived pattern — process death is not a
+# reliable failure signal here.)
+val $ok_res = Fleet::Fanout::run(["cat", "cat"], [
+    +{ send => "ping\n" },
+    +{ expect => qr/ping/, timeout => 5, name => "echo" },
+])
+val $ok_sum = Fleet::Fanout::summarize($ok_res)
+assert_eq $ok_sum->{total},  2, "integration: all-ok fanout total"
+assert_eq $ok_sum->{ok},     2, "integration: all-ok fanout both ok"
+assert_eq $ok_sum->{failed}, 0, "integration: all-ok fanout none failed"
+
+val $bad_res = Fleet::Fanout::run(["cat", "cat"], [
+    +{ expect => qr/never-appears/, timeout => 1, name => "ghost" },
+])
+val $bad_sum = Fleet::Fanout::summarize($bad_res)
+assert_eq $bad_sum->{failed}, 2, "integration: all-fail fanout both failed"
+assert_match qr/ghost/, $bad_sum->{errors}[0], "integration: summarize names the failed step"
+val $fixed = Fleet::Fanout::retry_failed($bad_res, [ +{ send => "ok\n" } ])
+assert_ok $fixed->[0]{retried}, "integration: retry_failed re-ran the failures"
+
 test_run

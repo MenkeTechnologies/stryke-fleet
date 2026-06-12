@@ -1,6 +1,6 @@
 [package]
 name = "stryke-fleet"
-version = "0.4.0"
+version = "0.4.1"
 description = "Parallel expect/PTY automation: playbooks, recipes, and multi-host fan-out over stryke's pty_* builtins and pmap. No cdylib, no helper binary — just .stk modules loaded on `use Fleet`."
 authors = ["MenkeTechnologies"]
 license = "MIT"

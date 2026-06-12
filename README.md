@@ -161,7 +161,8 @@ stryke-fleet/
 ├── examples/
 │   ├── local_demo.stk          # runnable anywhere — drives a local sh
 │   ├── installer_autopilot.stk # yes_to_all against a fake installer
-│   └── parallel_ssh.stk        # the headline: recipe × N hosts, partitioned
+│   ├── parallel_ssh.stk        # the headline: recipe × N hosts, partitioned
+│   └── orchestrate.stk         # all four layers: recipe + playbook + transcript + fanout
 ├── tests/                     # shell gate scripts (CI lints)
 └── docs/                      # GitHub Pages site
 ```
