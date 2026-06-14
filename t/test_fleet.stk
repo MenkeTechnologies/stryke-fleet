@@ -182,7 +182,7 @@ assert_eq $npm->[2]{send}, "e@x.io\n", "npm_login sends email last"
 assert_eq Fleet::Playbook::validate($npm), 3, "npm_login validates"
 assert_dies fn { Fleet::Recipes::npm_login(+{ user => "u", password => "p" }) }, "npm_login dies without email"
 
-assert_eq scalar(Fleet::Recipes::names()), 18, "recipe roster pinned at 18"
+assert_eq scalar(Fleet::Recipes::names()), 24, "recipe roster pinned at 24"
 
 # ── Fanout over local sessions ───────────────────────────────────────
 val $results = Fleet::Fanout::run(["cat", "cat", "cat"], [
