@@ -334,9 +334,103 @@ fn Fleet::Recipes::npm_login ($opts) {
     ]
 }
 
+## rsync over ssh — host-key accept then password (same prompts as scp).
+fn Fleet::Recipes::rsync ($opts) {
+    die "Fleet::Recipes::rsync: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{
+            name     => "host key",
+            expect   => qr/\(yes\/no(?:\/\[fingerprint\])?\)\?/,
+            send     => "yes\n",
+            timeout  => $timeout,
+            optional => 1,
+        },
+        +{ name => "rsync password", expect => qr/[Pp]assword:/, send => $opts->{password} . "\n", timeout => $timeout },
+    ]
+}
+
+## ssh-keygen — passphrase entered twice. Empty `passphrase` ⇒ no passphrase.
+## Optional `overwrite => 1|0` answers the "Overwrite (y/n)?" prompt.
+fn Fleet::Recipes::ssh_keygen ($opts = undef) {
+    $opts //= +{}
+    val $pass    = $opts->{passphrase} // ""
+    val $timeout = $opts->{timeout} // 15
+    var @steps
+    if (defined $opts->{overwrite}) {
+        push @steps, +{
+            name     => "overwrite",
+            expect   => qr/Overwrite \(y\/n\)\? ?/,
+            send     => ($opts->{overwrite} ? "y" : "n") . "\n",
+            timeout  => $timeout,
+            optional => 1,
+        }
+    }
+    push @steps,
+        +{ name => "passphrase",  expect => qr/Enter passphrase.*: ?/,         send => $pass . "\n", timeout => $timeout },
+        +{ name => "passphrase2", expect => qr/Enter same passphrase again: ?/, send => $pass . "\n", timeout => $timeout }
+    [@steps]
+}
+
+## git clone/fetch — ssh key passphrase and/or https username+password.
+## Provide whichever the transport needs; all steps are optional.
+fn Fleet::Recipes::git_clone ($opts = undef) {
+    $opts //= +{}
+    val $timeout = $opts->{timeout} // 60
+    var @steps = (
+        +{
+            name     => "host key",
+            expect   => qr/\(yes\/no(?:\/\[fingerprint\])?\)\?/,
+            send     => "yes\n",
+            timeout  => $timeout,
+            optional => 1,
+        },
+    )
+    if (defined $opts->{passphrase}) {
+        push @steps, +{ name => "key passphrase", expect => qr/Enter passphrase for key.*: ?|[Pp]assphrase: ?/, send => $opts->{passphrase} . "\n", timeout => $timeout, optional => 1 }
+    }
+    if (defined $opts->{user}) {
+        push @steps, +{ name => "https username", expect => qr/Username for .*: ?/, send => $opts->{user} . "\n", timeout => $timeout, optional => 1 }
+    }
+    if (defined $opts->{password}) {
+        push @steps, +{ name => "https password", expect => qr/Password for .*: ?/, send => $opts->{password} . "\n", timeout => $timeout, optional => 1 }
+    }
+    [@steps]
+}
+
+## kinit — Kerberos ticket: single "Password for principal@REALM:" prompt.
+fn Fleet::Recipes::kinit ($opts) {
+    die "Fleet::Recipes::kinit: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{ name => "kerberos password", expect => qr/[Pp]assword for .*: ?/, send => $opts->{password} . "\n", timeout => $timeout },
+    ]
+}
+
+## smbclient — SMB password then the "smb: \>" interactive prompt.
+fn Fleet::Recipes::smbclient ($opts) {
+    die "Fleet::Recipes::smbclient: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{ name => "smb password", expect => qr/[Pp]assword.*: ?/, send => $opts->{password} . "\n", timeout => $timeout },
+        +{ name => "smb prompt",   expect => qr/smb: .*\\> ?$/m,   timeout => $timeout, optional => 1 },
+    ]
+}
+
+## vault login (userpass/ldap) — hidden password prompt, then success banner.
+fn Fleet::Recipes::vault_login ($opts) {
+    die "Fleet::Recipes::vault_login: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{ name => "vault password", expect => qr/Password \(will be hidden\): ?/, send => $opts->{password} . "\n", timeout => $timeout },
+        +{ name => "vault success",  expect => qr/Success! You are now authenticated/i, timeout => $timeout, optional => 1 },
+    ]
+}
+
 ## All recipe names this sublib ships.
 fn Fleet::Recipes::names {
     qw(ssh_login sudo psql mysql redis_cli yes_to_all cisco_enable
        su telnet_login sftp passwd_change docker_login
-       scp gpg_decrypt ftp_login openssl_pem mongo npm_login)
+       scp gpg_decrypt ftp_login openssl_pem mongo npm_login
+       rsync ssh_keygen git_clone kinit smbclient vault_login)
 }
