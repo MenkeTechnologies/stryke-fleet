@@ -427,10 +427,139 @@ fn Fleet::Recipes::vault_login ($opts) {
     ]
 }
 
+## `aws configure`: access key, secret key, region, output format. opts:
+## access_key, secret_key (required), region (default ""), output (default "json").
+fn Fleet::Recipes::aws_configure ($opts) {
+    die "Fleet::Recipes::aws_configure: access_key required" unless defined $opts->{access_key}
+    die "Fleet::Recipes::aws_configure: secret_key required" unless defined $opts->{secret_key}
+    val $t = $opts->{timeout} // 15
+    [
+        +{ name => "access key", expect => qr/AWS Access Key ID/,     send => $opts->{access_key} . "\n",          timeout => $t },
+        +{ name => "secret key", expect => qr/AWS Secret Access Key/, send => $opts->{secret_key} . "\n",          timeout => $t },
+        +{ name => "region",     expect => qr/Default region name/,   send => ($opts->{region} // "") . "\n",      timeout => $t },
+        +{ name => "output",     expect => qr/Default output format/, send => ($opts->{output} // "json") . "\n",  timeout => $t },
+    ]
+}
+
+## `htpasswd -c file user`: New password / Re-type new password. opts: password.
+fn Fleet::Recipes::htpasswd ($opts) {
+    die "Fleet::Recipes::htpasswd: password required" unless defined $opts->{password}
+    val $t = $opts->{timeout} // 15
+    [
+        +{ name => "new password", expect => qr/New password:/,         send => $opts->{password} . "\n", timeout => $t },
+        +{ name => "confirm",      expect => qr/Re-type new password:/, send => $opts->{password} . "\n", timeout => $t },
+    ]
+}
+
+## Java `keytool`: keystore password, and a re-enter prompt when creating
+## (pass confirm => 1). opts: password (required), confirm.
+fn Fleet::Recipes::keytool ($opts) {
+    die "Fleet::Recipes::keytool: password required" unless defined $opts->{password}
+    val $t = $opts->{timeout} // 15
+    var @steps = (
+        +{ name => "keystore password", expect => qr/Enter keystore password:/, send => $opts->{password} . "\n", timeout => $t },
+    )
+    if ($opts->{confirm}) {
+        push @steps, +{ name => "re-enter password", expect => qr/Re-enter new password:/, send => $opts->{password} . "\n", timeout => $t }
+    }
+    [@steps]
+}
+
+## `ansible-vault`: existing "Vault password:" prompt, or the
+## "New Vault password:" + "Confirm New Vault password:" pair when new => 1.
+## opts: password (required), new.
+fn Fleet::Recipes::ansible_vault ($opts) {
+    die "Fleet::Recipes::ansible_vault: password required" unless defined $opts->{password}
+    val $t = $opts->{timeout} // 15
+    if ($opts->{new}) {
+        return [
+            +{ name => "new vault password",     expect => qr/New Vault password:/,         send => $opts->{password} . "\n", timeout => $t },
+            +{ name => "confirm vault password", expect => qr/Confirm New Vault password:/, send => $opts->{password} . "\n", timeout => $t },
+        ]
+    }
+    [ +{ name => "vault password", expect => qr/Vault password:/, send => $opts->{password} . "\n", timeout => $t } ]
+}
+
+## Oracle `sqlplus`: "Enter user-name:" then "Enter password:". opts:
+## user, password (both required).
+fn Fleet::Recipes::sqlplus ($opts) {
+    die "Fleet::Recipes::sqlplus: user required"     unless defined $opts->{user}
+    die "Fleet::Recipes::sqlplus: password required" unless defined $opts->{password}
+    val $t = $opts->{timeout} // 30
+    [
+        +{ name => "username", expect => qr/Enter user-name:/, send => $opts->{user} . "\n",     timeout => $t },
+        +{ name => "password", expect => qr/Enter password:/,  send => $opts->{password} . "\n", timeout => $t },
+    ]
+}
+
+## 1Password CLI `op signin`: account master-password prompt. opts: password.
+fn Fleet::Recipes::op_signin ($opts) {
+    die "Fleet::Recipes::op_signin: password required" unless defined $opts->{password}
+    val $t = $opts->{timeout} // 30
+    [
+        +{ name => "master password", expect => qr/Enter the password for|[Pp]assword:/, send => $opts->{password} . "\n", timeout => $t },
+    ]
+}
+
+## `ssh-add`: decrypt a private key by passphrase. opts: passphrase (required).
+fn Fleet::Recipes::ssh_add ($opts) {
+    die "Fleet::Recipes::ssh_add: passphrase required" unless defined $opts->{passphrase}
+    val $t = $opts->{timeout} // 15
+    [
+        +{ name => "key passphrase", expect => qr/Enter passphrase for/, send => $opts->{passphrase} . "\n", timeout => $t },
+    ]
+}
+
+## `unzip` of an encrypted archive: the per-archive "password:" prompt. opts:
+## password (required).
+fn Fleet::Recipes::unzip_encrypted ($opts) {
+    die "Fleet::Recipes::unzip_encrypted: password required" unless defined $opts->{password}
+    val $t = $opts->{timeout} // 15
+    [
+        +{ name => "archive password", expect => qr/password:/i, send => $opts->{password} . "\n", timeout => $t },
+    ]
+}
+
+## Cassandra `cqlsh`: optional password prompt, then the "cqlsh>" prompt.
+## opts: password, timeout.
+fn Fleet::Recipes::cqlsh ($opts = undef) {
+    $opts //= +{}
+    val $t = $opts->{timeout} // 15
+    var @steps
+    if (defined $opts->{password}) {
+        push @steps, +{ name => "password", expect => qr/[Pp]assword:/, send => $opts->{password} . "\n", timeout => $t }
+    }
+    push @steps, +{ name => "cqlsh prompt", expect => qr/cqlsh[^>]*> ?$/m, timeout => $t }
+    [@steps]
+}
+
+## `gcloud auth login --no-launch-browser`: paste the authorization code from
+## the printed URL. opts: code (required).
+fn Fleet::Recipes::gcloud_auth ($opts) {
+    die "Fleet::Recipes::gcloud_auth: code required" unless defined $opts->{code}
+    val $t = $opts->{timeout} // 120
+    [
+        +{ name => "authorization code", expect => qr/Enter authorization code:/, send => $opts->{code} . "\n", timeout => $t },
+    ]
+}
+
+## `heroku login -i`: email then password. opts: email, password (both required).
+fn Fleet::Recipes::heroku_login ($opts) {
+    die "Fleet::Recipes::heroku_login: email required"    unless defined $opts->{email}
+    die "Fleet::Recipes::heroku_login: password required" unless defined $opts->{password}
+    val $t = $opts->{timeout} // 30
+    [
+        +{ name => "email",    expect => qr/Email:/,       send => $opts->{email} . "\n",    timeout => $t },
+        +{ name => "password", expect => qr/[Pp]assword:/, send => $opts->{password} . "\n", timeout => $t },
+    ]
+}
+
 ## All recipe names this sublib ships.
 fn Fleet::Recipes::names {
     qw(ssh_login sudo psql mysql redis_cli yes_to_all cisco_enable
        su telnet_login sftp passwd_change docker_login
        scp gpg_decrypt ftp_login openssl_pem mongo npm_login
-       rsync ssh_keygen git_clone kinit smbclient vault_login)
+       rsync ssh_keygen git_clone kinit smbclient vault_login
+       aws_configure htpasswd keytool ansible_vault sqlplus op_signin
+       ssh_add unzip_encrypted cqlsh gcloud_auth heroku_login)
 }

@@ -182,7 +182,51 @@ assert_eq $npm->[2]{send}, "e@x.io\n", "npm_login sends email last"
 assert_eq Fleet::Playbook::validate($npm), 3, "npm_login validates"
 assert_dies fn { Fleet::Recipes::npm_login(+{ user => "u", password => "p" }) }, "npm_login dies without email"
 
-assert_eq scalar(Fleet::Recipes::names()), 24, "recipe roster pinned at 24"
+assert_eq scalar(Fleet::Recipes::names()), 35, "recipe roster pinned at 35"
+
+# ── v0.5.0 recipes ───────────────────────────────────────────────────
+val $awscfg = Fleet::Recipes::aws_configure(+{ access_key => "AKIA", secret_key => "sek" })
+assert_eq scalar(@$awscfg), 4, "aws_configure is 4 steps"
+assert_eq $awscfg->[2]{send}, "\n", "aws_configure region defaults to blank line"
+assert_eq $awscfg->[3]{send}, "json\n", "aws_configure output defaults to json"
+assert_dies fn { Fleet::Recipes::aws_configure(+{ access_key => "x" }) }, "aws_configure needs secret_key"
+
+val $hp = Fleet::Recipes::htpasswd(+{ password => "pw" })
+assert_eq scalar(@$hp), 2, "htpasswd is new + confirm"
+assert_eq $hp->[0]{send}, $hp->[1]{send}, "htpasswd sends the same password twice"
+assert_dies fn { Fleet::Recipes::htpasswd(+{}) }, "htpasswd needs password"
+
+assert_eq scalar(@{ Fleet::Recipes::keytool(+{ password => "p" }) }),               1, "keytool default is 1 step"
+assert_eq scalar(@{ Fleet::Recipes::keytool(+{ password => "p", confirm => 1 }) }), 2, "keytool confirm adds re-enter"
+
+assert_eq scalar(@{ Fleet::Recipes::ansible_vault(+{ password => "p" }) }),            1, "ansible_vault existing is 1 step"
+assert_eq scalar(@{ Fleet::Recipes::ansible_vault(+{ password => "p", new => 1 }) }), 2, "ansible_vault new is 2 steps"
+
+val $sp = Fleet::Recipes::sqlplus(+{ user => "scott", password => "tiger" })
+assert_eq scalar(@$sp), 2, "sqlplus is user + password"
+assert_eq $sp->[0]{send}, "scott\n", "sqlplus sends username first"
+assert_dies fn { Fleet::Recipes::sqlplus(+{ user => "x" }) }, "sqlplus needs password"
+
+assert_eq scalar(@{ Fleet::Recipes::op_signin(+{ password => "p" }) }), 1, "op_signin is 1 step"
+assert_eq scalar(@{ Fleet::Recipes::ssh_add(+{ passphrase => "p" }) }), 1, "ssh_add is 1 step"
+assert_dies fn { Fleet::Recipes::ssh_add(+{}) }, "ssh_add needs passphrase"
+
+assert_eq scalar(@{ Fleet::Recipes::unzip_encrypted(+{ password => "p" }) }), 1, "unzip_encrypted is 1 step"
+
+assert_eq scalar(@{ Fleet::Recipes::cqlsh() }),                     1, "cqlsh without password is just the prompt"
+assert_eq scalar(@{ Fleet::Recipes::cqlsh(+{ password => "p" }) }), 2, "cqlsh with password adds auth"
+
+assert_eq scalar(@{ Fleet::Recipes::gcloud_auth(+{ code => "abc" }) }), 1, "gcloud_auth is 1 step"
+
+val $hk = Fleet::Recipes::heroku_login(+{ email => "e@x.io", password => "p" })
+assert_eq scalar(@$hk), 2, "heroku_login is email + password"
+assert_eq $hk->[0]{send}, "e@x.io\n", "heroku_login sends email first"
+assert_dies fn { Fleet::Recipes::heroku_login(+{ email => "e@x.io" }) }, "heroku_login needs password"
+
+# Every new recipe builds a structurally valid playbook (validate counts steps).
+assert_eq Fleet::Playbook::validate($awscfg), 4, "aws_configure validates as a playbook"
+assert_eq Fleet::Playbook::validate($sp),     2, "sqlplus validates as a playbook"
+assert_eq Fleet::Playbook::validate($hk),     2, "heroku_login validates as a playbook"
 
 # ── Fanout over local sessions ───────────────────────────────────────
 val $results = Fleet::Fanout::run(["cat", "cat", "cat"], [
