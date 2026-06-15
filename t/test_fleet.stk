@@ -336,6 +336,17 @@ val $all_ok = Fleet::Fanout::run(["cat"], [ +{ send => "fine\n" } ])
 val $untouched = Fleet::Fanout::retry_failed($all_ok, [ +{ send => "x\n" } ])
 assert_ok !$untouched->[0]{retried},   "retry_failed leaves ok entries untouched"
 
+# ── Fanout::retry_until — persistent retry up to N attempts ──────────
+# A send-only playbook always succeeds, so each failed entry recovers on attempt 1.
+val $ru = Fleet::Fanout::retry_until($mix, [ +{ send => "ok\n" } ], 3)
+assert_eq scalar(@$ru), 2,             "retry_until preserves result count"
+assert_ok $ru->[0]{ok},                "retry_until recovers a failed entry"
+assert_eq $ru->[0]{attempts}, 1,       "retry_until: succeeded on the first retry"
+# Already-ok entries pass through untouched (no attempts/retried).
+val $ru_ok = Fleet::Fanout::retry_until($all_ok, [ +{ send => "x\n" } ], 3)
+assert_ok !$ru_ok->[0]{retried},       "retry_until leaves ok entries untouched"
+assert_dies fn { Fleet::Fanout::retry_until($mix, [ +{ send => "x\n" } ], 0) }, "retry_until: rejects max_attempts < 1"
+
 # ── Integration: recipes + playbook + transcript + fanout together ───
 # Exercises the four layers in one flow on local processes only — the
 # interactions the per-layer tests don't cover.

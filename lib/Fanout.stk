@@ -137,3 +137,29 @@ fn Fleet::Fanout::retry_failed ($results, $steps, $opts = undef) {
         } @$results
     ]
 }
+
+## Re-run each failed entry up to $max_attempts times, stopping per-target the
+## moment it succeeds — the persistent-retry form of retry_failed for transient
+## failures. An entry that needed retries carries `retried => 1` and `attempts`
+## => how many re-runs it took. ok results pass through untouched (no attempts).
+## Order is preserved. $max_attempts must be >= 1.
+fn Fleet::Fanout::retry_until ($results, $steps, $max_attempts, $opts = undef) {
+    $opts //= +{}
+    die "Fleet::Fanout::retry_until: max_attempts must be >= 1" unless $max_attempts >= 1
+    Fleet::Playbook::validate($steps)
+    [
+        map {
+            var $r = $_
+            var $n = 0
+            while (!$r->{ok} && $n < $max_attempts) {
+                $r = Fleet::Playbook::run($r->{cmd}, $steps, $opts)
+                $n++
+            }
+            if ($n > 0) {
+                $r->{retried}  = 1
+                $r->{attempts} = $n
+            }
+            $r
+        } @$results
+    ]
+}
