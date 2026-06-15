@@ -285,6 +285,21 @@ assert_eq $sum->{ok},     0, "summarize ok count"
 assert_eq $sum->{failed}, 2, "summarize failed count"
 assert_match qr/^cat: timeout on ghost/, $sum->{errors}[0], "summarize error line format"
 
+# ── Fanout::group_by_error ───────────────────────────────────────────
+# Pure over a synthetic result set so the error strings are controlled.
+val $res = [
+    +{ cmd => "ssh a", ok => 0, error => "connection refused" },
+    +{ cmd => "ssh b", ok => 0, error => "connection refused" },
+    +{ cmd => "ssh c", ok => 0, error => "auth failed" },
+    +{ cmd => "ssh d", ok => 1 },
+]
+val $grp = Fleet::Fanout::group_by_error($res)
+assert_eq scalar(keys %$grp),                       2,       "group_by_error: 2 distinct errors (ok ignored)"
+assert_eq scalar(@{ $grp->{"connection refused"} }), 2,      "group_by_error: two hosts share an error"
+assert_eq scalar(@{ $grp->{"auth failed"} }),        1,      "group_by_error: lone error bucket"
+assert_eq $grp->{"connection refused"}[0],          "ssh a", "group_by_error: bucket keeps the cmd, order preserved"
+assert_eq scalar(keys %{ Fleet::Fanout::group_by_error([ +{ cmd => "x", ok => 1 } ]) }), 0, "group_by_error: all-ok → empty"
+
 # ── Fanout::retry_failed ─────────────────────────────────────────────
 val $retried = Fleet::Fanout::retry_failed($mix, [ +{ send => "ok\n" } ])
 assert_eq scalar(@$retried), 2,        "retry_failed preserves result count"

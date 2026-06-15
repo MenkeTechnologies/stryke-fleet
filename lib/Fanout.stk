@@ -53,6 +53,25 @@ fn Fleet::Fanout::summarize ($results) {
     }
 }
 
+## Bucket failed fan-out results by their error string → a hashref of
+## { "error message" => [cmd, ...] }. At fleet scale this collapses the flat
+## per-host error list `summarize` returns into "which hosts failed the same
+## way" — the first thing you want when 200 targets misbehave. Successful
+## results are ignored.
+fn Fleet::Fanout::group_by_error ($results) {
+    val $failed = Fleet::Fanout::partition($results)->{failed}
+    var %buckets
+    for val $r (@$failed) {
+        val $key = $r->{error} // "?"
+        if (exists $buckets{$key}) {
+            push @{ $buckets{$key} }, $r->{cmd}
+        } else {
+            $buckets{$key} = [ $r->{cmd} ]
+        }
+    }
+    \%buckets
+}
+
 ## Re-run \@steps against just the failed entries of a previous fan-out,
 ## in place: ok results pass through untouched, failed ones are replaced
 ## by their re-run result (tagged retried => 1). Order is preserved.
