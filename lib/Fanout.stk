@@ -95,6 +95,30 @@ fn Fleet::Fanout::group_by_error ($results) {
     \%buckets
 }
 
+## Find which fan-out targets saw $pattern in their captured output. Scans every
+## result's transcript events for a `data` field matching $pattern (a regex
+## string or qr//) and returns an arrayref of +{ cmd, ok, match } — match is the
+## first matching event data. This is the fleet-scale "which hosts printed X"
+## query; unlike partition/summarize/group_by_error it searches the transcript,
+## not just ok/error, so it catches things that did not fail the playbook (a
+## deprecation warning, a version banner, an unexpected prompt).
+fn Fleet::Fanout::grep_transcript ($results, $pattern) {
+    val $re = ref($pattern) eq "Regexp" ? $pattern : qr/$pattern/
+    var @out
+    for val $r (@$results) {
+        var $hit = undef
+        for val $ev (@{ $r->{transcript} // [] }) {
+            val $d = $ev->{data} // ""
+            if ($d =~ $re) {
+                $hit = $d
+                last
+            }
+        }
+        push @out, +{ cmd => $r->{cmd}, ok => $r->{ok}, match => $hit } if defined $hit
+    }
+    \@out
+}
+
 ## Re-run \@steps against just the failed entries of a previous fan-out,
 ## in place: ok results pass through untouched, failed ones are replaced
 ## by their re-run result (tagged retried => 1). Order is preserved.

@@ -310,6 +310,23 @@ assert_eq scalar(@{ $grp->{"auth failed"} }),        1,      "group_by_error: lo
 assert_eq $grp->{"connection refused"}[0],          "ssh a", "group_by_error: bucket keeps the cmd, order preserved"
 assert_eq scalar(keys %{ Fleet::Fanout::group_by_error([ +{ cmd => "x", ok => 1 } ]) }), 0, "group_by_error: all-ok → empty"
 
+# ── Fanout::grep_transcript ──────────────────────────────────────────
+# Pure over a synthetic result set with transcript event lists.
+val $tres = [
+    +{ cmd => "ssh a", ok => 1, transcript => [ +{ event => "match", data => "v1.2.3 ready" } ] },
+    +{ cmd => "ssh b", ok => 1, transcript => [ +{ event => "match", data => "DEPRECATED: foo" } ] },
+    +{ cmd => "ssh c", ok => 0, transcript => [ +{ event => "match", data => "v1.2.3 ready" }, +{ event => "timeout", data => "" } ] },
+    +{ cmd => "ssh d", ok => 1, transcript => [ +{ event => "send", data => "go\n" } ] },
+]
+val $hits = Fleet::Fanout::grep_transcript($tres, qr/v1\.2\.3/)
+assert_eq scalar(@$hits),     2,            "grep_transcript: two hosts printed the version"
+assert_eq $hits->[0]{cmd},    "ssh a",      "grep_transcript: keeps cmd, order preserved"
+assert_eq $hits->[0]{match},  "v1.2.3 ready", "grep_transcript: match is the matching event data"
+assert_eq $hits->[1]{ok},     0,            "grep_transcript: includes a failed host that still matched"
+# A plain string pattern is accepted too.
+assert_eq scalar(@{ Fleet::Fanout::grep_transcript($tres, "DEPRECATED") }), 1, "grep_transcript: string pattern, lone deprecation warning"
+assert_eq scalar(@{ Fleet::Fanout::grep_transcript($tres, qr/nope/) }), 0, "grep_transcript: no matches → empty"
+
 # ── Fanout::retry_failed ─────────────────────────────────────────────
 val $retried = Fleet::Fanout::retry_failed($mix, [ +{ send => "ok\n" } ])
 assert_eq scalar(@$retried), 2,        "retry_failed preserves result count"
