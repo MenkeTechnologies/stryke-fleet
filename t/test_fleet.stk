@@ -246,6 +246,16 @@ assert_eq scalar(@{ $part->{failed} }), 2, "partition: both failed"
 
 assert_dies fn { Fleet::Fanout::run("cat", [+{ send => "x" }]) }, "fanout rejects scalar cmds"
 
+# ── Fanout::batch — bounded concurrency, one result per target in order ──
+val $batched = Fleet::Fanout::batch(["cat", "cat", "cat", "cat", "cat"], [
+    +{ send => "go\n" },
+    +{ expect => qr/go/, timeout => 10 },
+], 2)
+assert_eq scalar(@$batched), 5,                "batch: one result per target across batches"
+assert_ok $batched->[0]{ok} && $batched->[4]{ok}, "batch: first and last targets both ran"
+assert_dies fn { Fleet::Fanout::batch(["cat"], [+{ send => "x\n" }], 0) }, "batch: rejects batch_size < 1"
+assert_dies fn { Fleet::Fanout::batch("cat", [+{ send => "x\n" }], 2) },   "batch: rejects scalar cmds"
+
 # ── Playbook step retries with retry_send nudge ──────────────────────
 val $rr = Fleet::Playbook::run("cat", [
     +{ expect => qr/pong/, timeout => 1, retries => 2, retry_send => "pong\n", name => "nudged" },
