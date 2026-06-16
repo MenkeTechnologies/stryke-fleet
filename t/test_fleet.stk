@@ -219,7 +219,7 @@ assert_eq $npm->[2]{send}, "e@x.io\n", "npm_login sends email last"
 assert_eq Fleet::Playbook::validate($npm), 3, "npm_login validates"
 assert_dies fn { Fleet::Recipes::npm_login(+{ user => "u", password => "p" }) }, "npm_login dies without email"
 
-assert_eq scalar(Fleet::Recipes::names()), 41, "recipe roster pinned at 41"
+assert_eq scalar(Fleet::Recipes::names()), 42, "recipe roster pinned at 42"
 
 # restic: repository password, with an optional second (verify) prompt for `init`.
 val $rt = Fleet::Recipes::restic(+{ password => "repo-pw" })
@@ -249,6 +249,19 @@ assert_ok "Enter passphrase: " =~ $ag->[0]{expect},  "age matches the decrypt pr
 assert_ok "Enter passphrase (leave empty to autogenerate a secure one): " =~ $ag->[0]{expect}, "age also matches the encrypt -p prompt"
 assert_ok "Confirm passphrase: " =~ $ag->[1]{expect}, "age confirm matches the -p confirm prompt"
 assert_dies fn { Fleet::Recipes::age(+{}) }, "age dies without a password"
+
+# cryptsetup: LUKS luksFormat/luksOpen passphrase prompts.
+val $cs = Fleet::Recipes::cryptsetup(+{ password => "luks-pw" })
+assert_eq scalar(@$cs), 3,               "cryptsetup is 3 steps (confirm + passphrase + verify)"
+assert_ok $cs->[0]{optional},            "cryptsetup confirm step is optional (only luksFormat asks)"
+assert_eq $cs->[0]{send}, "YES\n",       "cryptsetup confirms with capital-letters YES"
+assert_eq $cs->[1]{send}, "luks-pw\n",   "cryptsetup sends the passphrase"
+assert_ok $cs->[2]{optional},            "cryptsetup verify step is optional (only luksFormat verifies)"
+assert_ok "Are you sure? (Type 'yes' in capital letters): " =~ $cs->[0]{expect}, "cryptsetup matches the overwrite confirmation"
+assert_ok "Enter LUKS passphrase: " =~ $cs->[1]{expect},        "cryptsetup matches the luksFormat passphrase prompt"
+assert_ok "Enter passphrase for /dev/sdd: " =~ $cs->[1]{expect}, "cryptsetup matches the luksOpen passphrase prompt"
+assert_ok "Verify passphrase: " =~ $cs->[2]{expect},            "cryptsetup matches the verify prompt"
+assert_dies fn { Fleet::Recipes::cryptsetup(+{}) }, "cryptsetup dies without a password"
 
 # ldapsearch: single password step answering OpenLDAP's "Enter LDAP Password:".
 val $ldap = Fleet::Recipes::ldapsearch(+{ password => "secret" })

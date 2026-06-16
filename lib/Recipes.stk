@@ -601,6 +601,21 @@ fn Fleet::Recipes::cqlsh ($opts = undef) {
     [@steps]
 }
 
+## `cryptsetup` LUKS disk encryption: answer the interactive passphrase prompts
+## for luksFormat (capital-letters "YES" confirmation, then "Enter LUKS
+## passphrase" + "Verify passphrase") and luksOpen ("Enter passphrase for DEV").
+## The confirmation and verify steps are optional so the same recipe drives both
+## actions. opts: password (required), timeout.
+fn Fleet::Recipes::cryptsetup ($opts) {
+    die "Fleet::Recipes::cryptsetup: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{ name => "cryptsetup confirm overwrite", expect => qr/Are you sure\? \(Type '?[Yy][Ee][Ss]'? in capital letters\): ?/, send => "YES\n",                   timeout => $timeout, optional => 1 },
+        +{ name => "cryptsetup passphrase",        expect => qr/Enter (?:LUKS )?passphrase(?: for .*)?: ?/,                       send => $opts->{password} . "\n", timeout => $timeout },
+        +{ name => "cryptsetup passphrase verify", expect => qr/Verify passphrase: ?/,                                            send => $opts->{password} . "\n", timeout => $timeout, optional => 1 },
+    ]
+}
+
 ## `clickhouse-client --password`: answer the "Password for user (NAME):" prompt.
 ## opts: password (required), timeout.
 fn Fleet::Recipes::clickhouse_client ($opts) {
@@ -639,5 +654,5 @@ fn Fleet::Recipes::names {
        scp gpg_decrypt ftp_login openssl_pem mongo npm_login
        rsync ssh_keygen git_clone kinit ldapsearch restic borg age smbclient vault_login
        aws_configure htpasswd keytool ansible_vault sqlplus op_signin
-       ssh_add unzip_encrypted cqlsh clickhouse_client gcloud_auth heroku_login)
+       ssh_add unzip_encrypted cqlsh cryptsetup clickhouse_client gcloud_auth heroku_login)
 }
