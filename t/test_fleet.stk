@@ -219,7 +219,7 @@ assert_eq $npm->[2]{send}, "e@x.io\n", "npm_login sends email last"
 assert_eq Fleet::Playbook::validate($npm), 3, "npm_login validates"
 assert_dies fn { Fleet::Recipes::npm_login(+{ user => "u", password => "p" }) }, "npm_login dies without email"
 
-assert_eq scalar(Fleet::Recipes::names()), 40, "recipe roster pinned at 40"
+assert_eq scalar(Fleet::Recipes::names()), 41, "recipe roster pinned at 41"
 
 # restic: repository password, with an optional second (verify) prompt for `init`.
 val $rt = Fleet::Recipes::restic(+{ password => "repo-pw" })
@@ -239,6 +239,16 @@ assert_ok "Enter passphrase for key /srv/repo: " =~ $bg->[0]{expect}, "borg matc
 assert_ok "Enter new passphrase: " =~ $bg->[0]{expect},               "borg also matches the init new-passphrase prompt"
 assert_ok "Enter same passphrase again: " =~ $bg->[1]{expect},        "borg verify matches the init confirm prompt"
 assert_dies fn { Fleet::Recipes::borg(+{}) }, "borg dies without a password"
+
+# age: the modern gpg alternative — passphrase prompt (decrypt) + optional confirm (encrypt -p).
+val $ag = Fleet::Recipes::age(+{ password => "age-pw" })
+assert_eq scalar(@$ag), 2,             "age is 2 steps (passphrase + optional confirm)"
+assert_eq $ag->[0]{send}, "age-pw\n",  "age sends the passphrase"
+assert_ok $ag->[1]{optional},          "age confirm step is optional (only -p asks twice)"
+assert_ok "Enter passphrase: " =~ $ag->[0]{expect},  "age matches the decrypt prompt"
+assert_ok "Enter passphrase (leave empty to autogenerate a secure one): " =~ $ag->[0]{expect}, "age also matches the encrypt -p prompt"
+assert_ok "Confirm passphrase: " =~ $ag->[1]{expect}, "age confirm matches the -p confirm prompt"
+assert_dies fn { Fleet::Recipes::age(+{}) }, "age dies without a password"
 
 # ldapsearch: single password step answering OpenLDAP's "Enter LDAP Password:".
 val $ldap = Fleet::Recipes::ldapsearch(+{ password => "secret" })
