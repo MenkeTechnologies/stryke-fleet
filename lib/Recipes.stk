@@ -533,6 +533,16 @@ fn Fleet::Recipes::cqlsh ($opts = undef) {
     [@steps]
 }
 
+## `clickhouse-client --password`: answer the "Password for user (NAME):" prompt.
+## opts: password (required), timeout.
+fn Fleet::Recipes::clickhouse_client ($opts) {
+    die "Fleet::Recipes::clickhouse_client: password required" unless defined $opts->{password}
+    val $t = $opts->{timeout} // 15
+    [
+        +{ name => "clickhouse password", expect => qr/Password for user[^:]*: ?/, send => $opts->{password} . "\n", timeout => $t },
+    ]
+}
+
 ## `gcloud auth login --no-launch-browser`: paste the authorization code from
 ## the printed URL. opts: code (required).
 fn Fleet::Recipes::gcloud_auth ($opts) {
@@ -561,5 +571,5 @@ fn Fleet::Recipes::names {
        scp gpg_decrypt ftp_login openssl_pem mongo npm_login
        rsync ssh_keygen git_clone kinit smbclient vault_login
        aws_configure htpasswd keytool ansible_vault sqlplus op_signin
-       ssh_add unzip_encrypted cqlsh gcloud_auth heroku_login)
+       ssh_add unzip_encrypted cqlsh clickhouse_client gcloud_auth heroku_login)
 }

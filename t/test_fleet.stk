@@ -182,7 +182,14 @@ assert_eq $npm->[2]{send}, "e@x.io\n", "npm_login sends email last"
 assert_eq Fleet::Playbook::validate($npm), 3, "npm_login validates"
 assert_dies fn { Fleet::Recipes::npm_login(+{ user => "u", password => "p" }) }, "npm_login dies without email"
 
-assert_eq scalar(Fleet::Recipes::names()), 35, "recipe roster pinned at 35"
+assert_eq scalar(Fleet::Recipes::names()), 36, "recipe roster pinned at 36"
+
+# clickhouse_client: single password step answering "Password for user (NAME):".
+val $ch = Fleet::Recipes::clickhouse_client(+{ password => "pw" })
+assert_eq scalar(@$ch), 1, "clickhouse_client is 1 step"
+assert_eq $ch->[0]{send}, "pw\n", "clickhouse_client sends the password"
+assert_ok "Password for user (default):" =~ $ch->[0]{expect}, "clickhouse_client matches the real prompt"
+assert_dies fn { Fleet::Recipes::clickhouse_client(+{}) }, "clickhouse_client needs password"
 
 # ── v0.5.0 recipes ───────────────────────────────────────────────────
 val $awscfg = Fleet::Recipes::aws_configure(+{ access_key => "AKIA", secret_key => "sek" })
