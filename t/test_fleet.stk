@@ -86,9 +86,16 @@ assert_eq $sc->{log}[1]{byte},  4,              "send_control: case-insensitive,
 assert_eq $sc->{log}[1]{char},  "d",            "send_control lowercases the char"
 Fleet::Session::send_control($sc, "[")
 assert_eq $sc->{log}[2]{byte},  27,             "send_control: [ → ESC 0x1b"
-assert_eq Fleet::Session::alive($sc), 1,        "send_control: session still alive after controls"
 assert_dies fn { Fleet::Session::send_control($sc, "1") }, "send_control: dies on an unknown control char"
 Fleet::Session::close($sc)
+
+# Liveness after a *non-terminating* control: Ctrl-C/Ctrl-D legitimately kill
+# `cat` (SIGINT / EOF), so check liveness on a fresh session that only receives
+# ESC, which `cat` takes as ordinary input and keeps running.
+val $sa = Fleet::Session::open("cat")
+Fleet::Session::send_control($sa, "[")
+assert_eq Fleet::Session::alive($sa), 1,        "send_control: a non-terminating control leaves the session alive"
+Fleet::Session::close($sa)
 
 # ── Playbook run: ok path ────────────────────────────────────────────
 val $r = Fleet::Playbook::run("cat", [
