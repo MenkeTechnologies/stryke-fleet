@@ -96,6 +96,27 @@ fn Fleet::Session::send_secret ($s, $text) {
     pty_send($s->{raw}, $line)
 }
 
+## Send a control character to the session — the pexpect/Expect `sendcontrol`
+## primitive. $char is a single letter a-z (Ctrl-A … Ctrl-Z, e.g. "c" → 0x03 to
+## interrupt, "d" → 0x04 for EOF, "z" → 0x1a to suspend) or one of the symbol
+## controls @[\]^_? (`[` → ESC 0x1b, `?` → DEL 0x7f). The transcript records a
+## `send_control` event with the char + byte (the raw byte is never dumped). An
+## unknown char dies.
+fn Fleet::Session::send_control ($s, $char) {
+    val $c = lc(substr($char, 0, 1))
+    val %special = ('@' => 0, '[' => 27, '\\' => 28, ']' => 29, '^' => 30, '_' => 31, '?' => 127)
+    var $byte
+    if ($c =~ /^[a-z]$/) {
+        $byte = ord($c) - 96
+    } elsif (exists $special{$c}) {
+        $byte = $special{$c}
+    } else {
+        die "Fleet::Session::send_control: unknown control char '$char' (want a-z or \@[\\]^_?)"
+    }
+    push @{ $s->{log} }, +{ event => "send_control", char => $c, byte => $byte }
+    pty_send($s->{raw}, chr($byte))
+}
+
 ## Transcript entries of one event type (send / match / timeout /
 ## close), in order. events($s, "match") → the matched-text entries.
 fn Fleet::Session::events ($s, $type) {

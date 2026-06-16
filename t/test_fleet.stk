@@ -75,6 +75,21 @@ assert_eq scalar(grep { $_->{data} =~ /hunter2/ } @{ Fleet::Session::events($ss,
     "send_secret keeps the secret out of every send event"
 Fleet::Session::close($ss)
 
+# ── Session send_control: send a control character (pexpect sendcontrol) ──
+val $sc = Fleet::Session::open("cat")
+Fleet::Session::send_control($sc, "c")
+assert_eq $sc->{log}[0]{event}, "send_control", "send_control logs a send_control event"
+assert_eq $sc->{log}[0]{char},  "c",            "send_control records the char"
+assert_eq $sc->{log}[0]{byte},  3,              "send_control: c → 0x03 (Ctrl-C)"
+Fleet::Session::send_control($sc, "D")
+assert_eq $sc->{log}[1]{byte},  4,              "send_control: case-insensitive, D → 0x04"
+assert_eq $sc->{log}[1]{char},  "d",            "send_control lowercases the char"
+Fleet::Session::send_control($sc, "[")
+assert_eq $sc->{log}[2]{byte},  27,             "send_control: [ → ESC 0x1b"
+assert_eq Fleet::Session::alive($sc), 1,        "send_control: session still alive after controls"
+assert_dies fn { Fleet::Session::send_control($sc, "1") }, "send_control: dies on an unknown control char"
+Fleet::Session::close($sc)
+
 # ── Playbook run: ok path ────────────────────────────────────────────
 val $r = Fleet::Playbook::run("cat", [
     +{ send => "alpha\n" },
