@@ -85,6 +85,17 @@ fn Fleet::Session::send_line ($s, $text) {
     Fleet::Session::send($s, $line)
 }
 
+## Send a secret (password, token) WITHOUT logging it — the transcript records a
+## redacted `send` event (data "***", secret => 1) so credentials never leak into
+## transcript dumps or failure reports. A trailing newline is added (the common
+## case for answering a password prompt) unless $text already ends in one. The
+## secret is still transmitted in full to the session's stdin.
+fn Fleet::Session::send_secret ($s, $text) {
+    val $line = substr($text, -1) eq "\n" ? $text : "$text\n"
+    push @{ $s->{log} }, +{ event => "send", data => "***", secret => 1 }
+    pty_send($s->{raw}, $line)
+}
+
 ## Transcript entries of one event type (send / match / timeout /
 ## close), in order. events($s, "match") → the matched-text entries.
 fn Fleet::Session::events ($s, $type) {

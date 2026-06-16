@@ -60,6 +60,21 @@ assert_match qr/timeout\t/, Fleet::Session::transcript_text($sh), "transcript_te
 Fleet::Session::close($sh)
 assert_eq Fleet::Session::last_match(Fleet::Session::open("true")), undef, "last_match undef on fresh session"
 
+# ── Session send_secret: transmit but redact in the transcript ────────
+val $ss = Fleet::Session::open("cat")
+Fleet::Session::send_secret($ss, "hunter2")
+# The secret is actually transmitted — `cat` echoes it back over the PTY.
+assert_eq Fleet::Session::expect($ss, qr/hunter2/, 10), "hunter2", "send_secret transmits the real text"
+# ...but the transcript records only a redacted placeholder, never the secret.
+assert_eq $ss->{log}[0]{event}, "send",  "send_secret logs a send event"
+assert_eq $ss->{log}[0]{data},  "***",   "send_secret redacts the data"
+assert_eq $ss->{log}[0]{secret}, 1,      "send_secret flags the entry as secret"
+# No `send` event in the transcript carries the secret (it only redacts the send
+# side; a real password prompt does not echo, unlike `cat` here).
+assert_eq scalar(grep { $_->{data} =~ /hunter2/ } @{ Fleet::Session::events($ss, "send") }), 0,
+    "send_secret keeps the secret out of every send event"
+Fleet::Session::close($ss)
+
 # ── Playbook run: ok path ────────────────────────────────────────────
 val $r = Fleet::Playbook::run("cat", [
     +{ send => "alpha\n" },
