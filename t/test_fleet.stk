@@ -212,7 +212,16 @@ assert_eq $npm->[2]{send}, "e@x.io\n", "npm_login sends email last"
 assert_eq Fleet::Playbook::validate($npm), 3, "npm_login validates"
 assert_dies fn { Fleet::Recipes::npm_login(+{ user => "u", password => "p" }) }, "npm_login dies without email"
 
-assert_eq scalar(Fleet::Recipes::names()), 38, "recipe roster pinned at 38"
+assert_eq scalar(Fleet::Recipes::names()), 39, "recipe roster pinned at 39"
+
+# restic: repository password, with an optional second (verify) prompt for `init`.
+val $rt = Fleet::Recipes::restic(+{ password => "repo-pw" })
+assert_eq scalar(@$rt), 2,             "restic is 2 steps (password + optional verify)"
+assert_eq $rt->[0]{send}, "repo-pw\n", "restic sends the repository password"
+assert_ok $rt->[1]{optional},          "restic verify step is optional (only init asks twice)"
+assert_ok "enter password for repository: " =~ $rt->[0]{expect}, "restic matches the repository prompt"
+assert_ok "enter password for new repository: " =~ $rt->[0]{expect}, "restic also matches the init prompt"
+assert_dies fn { Fleet::Recipes::restic(+{}) }, "restic dies without a password"
 
 # ldapsearch: single password step answering OpenLDAP's "Enter LDAP Password:".
 val $ldap = Fleet::Recipes::ldapsearch(+{ password => "secret" })

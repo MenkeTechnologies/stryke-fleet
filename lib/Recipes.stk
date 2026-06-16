@@ -433,6 +433,19 @@ fn Fleet::Recipes::ldapsearch ($opts) {
     ]
 }
 
+## restic — the backup repository password prompt. Most subcommands ask once
+## ("enter password for repository:"); `restic init` asks twice ("enter password
+## for new repository:" then "enter password again:"), so the verify step is
+## optional. opts: password (required), timeout.
+fn Fleet::Recipes::restic ($opts) {
+    die "Fleet::Recipes::restic: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{ name => "restic password",        expect => qr/enter password for (new )?repository: ?/, send => $opts->{password} . "\n", timeout => $timeout },
+        +{ name => "restic password verify", expect => qr/enter password again: ?/,                  send => $opts->{password} . "\n", timeout => $timeout, optional => 1 },
+    ]
+}
+
 ## smbclient — SMB password then the "smb: \>" interactive prompt.
 fn Fleet::Recipes::smbclient ($opts) {
     die "Fleet::Recipes::smbclient: password required" unless defined $opts->{password}
@@ -595,7 +608,7 @@ fn Fleet::Recipes::names {
     qw(ssh_login ssh_copy_id sudo psql mysql redis_cli yes_to_all cisco_enable
        su telnet_login sftp passwd_change docker_login
        scp gpg_decrypt ftp_login openssl_pem mongo npm_login
-       rsync ssh_keygen git_clone kinit ldapsearch smbclient vault_login
+       rsync ssh_keygen git_clone kinit ldapsearch restic smbclient vault_login
        aws_configure htpasswd keytool ansible_vault sqlplus op_signin
        ssh_add unzip_encrypted cqlsh clickhouse_client gcloud_auth heroku_login)
 }
