@@ -219,7 +219,7 @@ assert_eq $npm->[2]{send}, "e@x.io\n", "npm_login sends email last"
 assert_eq Fleet::Playbook::validate($npm), 3, "npm_login validates"
 assert_dies fn { Fleet::Recipes::npm_login(+{ user => "u", password => "p" }) }, "npm_login dies without email"
 
-assert_eq scalar(Fleet::Recipes::names()), 39, "recipe roster pinned at 39"
+assert_eq scalar(Fleet::Recipes::names()), 40, "recipe roster pinned at 40"
 
 # restic: repository password, with an optional second (verify) prompt for `init`.
 val $rt = Fleet::Recipes::restic(+{ password => "repo-pw" })
@@ -229,6 +229,16 @@ assert_ok $rt->[1]{optional},          "restic verify step is optional (only ini
 assert_ok "enter password for repository: " =~ $rt->[0]{expect}, "restic matches the repository prompt"
 assert_ok "enter password for new repository: " =~ $rt->[0]{expect}, "restic also matches the init prompt"
 assert_dies fn { Fleet::Recipes::restic(+{}) }, "restic dies without a password"
+
+# borg: repository passphrase, with an optional second (verify) prompt for `init`.
+val $bg = Fleet::Recipes::borg(+{ password => "borg-pw" })
+assert_eq scalar(@$bg), 2,             "borg is 2 steps (passphrase + optional verify)"
+assert_eq $bg->[0]{send}, "borg-pw\n", "borg sends the repository passphrase"
+assert_ok $bg->[1]{optional},          "borg verify step is optional (only init asks twice)"
+assert_ok "Enter passphrase for key /srv/repo: " =~ $bg->[0]{expect}, "borg matches the existing-repo unlock prompt"
+assert_ok "Enter new passphrase: " =~ $bg->[0]{expect},               "borg also matches the init new-passphrase prompt"
+assert_ok "Enter same passphrase again: " =~ $bg->[1]{expect},        "borg verify matches the init confirm prompt"
+assert_dies fn { Fleet::Recipes::borg(+{}) }, "borg dies without a password"
 
 # ldapsearch: single password step answering OpenLDAP's "Enter LDAP Password:".
 val $ldap = Fleet::Recipes::ldapsearch(+{ password => "secret" })
