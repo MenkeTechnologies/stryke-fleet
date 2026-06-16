@@ -182,7 +182,14 @@ assert_eq $npm->[2]{send}, "e@x.io\n", "npm_login sends email last"
 assert_eq Fleet::Playbook::validate($npm), 3, "npm_login validates"
 assert_dies fn { Fleet::Recipes::npm_login(+{ user => "u", password => "p" }) }, "npm_login dies without email"
 
-assert_eq scalar(Fleet::Recipes::names()), 36, "recipe roster pinned at 36"
+assert_eq scalar(Fleet::Recipes::names()), 37, "recipe roster pinned at 37"
+
+# ssh_copy_id: host-key (optional) + password + key-added confirmation (optional).
+val $cp = Fleet::Recipes::ssh_copy_id(+{ password => "pw" })
+assert_eq scalar(@$cp), 3, "ssh_copy_id is 3 steps"
+assert_eq $cp->[1]{send}, "pw\n", "ssh_copy_id sends the remote password"
+assert_ok $cp->[0]{optional}, "ssh_copy_id host-key step is optional"
+assert_dies fn { Fleet::Recipes::ssh_copy_id(+{}) }, "ssh_copy_id needs a password"
 
 # clickhouse_client: single password step answering "Password for user (NAME):".
 val $ch = Fleet::Recipes::clickhouse_client(+{ password => "pw" })

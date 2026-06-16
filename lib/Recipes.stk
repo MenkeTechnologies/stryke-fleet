@@ -48,6 +48,21 @@ fn Fleet::Recipes::ssh_login ($opts = undef) {
     [@steps]
 }
 
+## ssh-copy-id: install a public key on a remote host — accept the host key on
+## first connect (optional), answer the remote password, then expect the
+## "Number of key(s) added" confirmation (optional). Distinct from ssh_login:
+## this distributes a key rather than opening a shell. opts: password
+## (required), timeout.
+fn Fleet::Recipes::ssh_copy_id ($opts) {
+    die "Fleet::Recipes::ssh_copy_id: password required" unless defined $opts->{password}
+    val $t = $opts->{timeout} // 30
+    [
+        +{ name => "host key", expect => qr/\(yes\/no(?:\/\[fingerprint\])?\)\?/, send => "yes\n", timeout => $t, optional => 1 },
+        +{ name => "password", expect => qr/[Pp]assword:/, send => $opts->{password} . "\n", timeout => $t },
+        +{ name => "key added", expect => qr/Number of key\(s\) added/, timeout => $t, optional => 1 },
+    ]
+}
+
 ## sudo: answer the password prompt, then expect PROMPT. opts: password
 ## (required), prompt, timeout.
 fn Fleet::Recipes::sudo ($opts) {
@@ -566,7 +581,7 @@ fn Fleet::Recipes::heroku_login ($opts) {
 
 ## All recipe names this sublib ships.
 fn Fleet::Recipes::names {
-    qw(ssh_login sudo psql mysql redis_cli yes_to_all cisco_enable
+    qw(ssh_login ssh_copy_id sudo psql mysql redis_cli yes_to_all cisco_enable
        su telnet_login sftp passwd_change docker_login
        scp gpg_decrypt ftp_login openssl_pem mongo npm_login
        rsync ssh_keygen git_clone kinit smbclient vault_login
