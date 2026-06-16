@@ -212,7 +212,15 @@ assert_eq $npm->[2]{send}, "e@x.io\n", "npm_login sends email last"
 assert_eq Fleet::Playbook::validate($npm), 3, "npm_login validates"
 assert_dies fn { Fleet::Recipes::npm_login(+{ user => "u", password => "p" }) }, "npm_login dies without email"
 
-assert_eq scalar(Fleet::Recipes::names()), 37, "recipe roster pinned at 37"
+assert_eq scalar(Fleet::Recipes::names()), 38, "recipe roster pinned at 38"
+
+# ldapsearch: single password step answering OpenLDAP's "Enter LDAP Password:".
+val $ldap = Fleet::Recipes::ldapsearch(+{ password => "secret" })
+assert_eq scalar(@$ldap), 1,           "ldapsearch is 1 step"
+assert_eq $ldap->[0]{send}, "secret\n", "ldapsearch sends the bind password"
+assert_ok "Enter LDAP Password: " =~ $ldap->[0]{expect}, "ldapsearch matches the OpenLDAP prompt"
+assert_eq Fleet::Playbook::validate($ldap), 1, "ldapsearch validates"
+assert_dies fn { Fleet::Recipes::ldapsearch(+{}) }, "ldapsearch dies without a password"
 
 # ssh_copy_id: host-key (optional) + password + key-added confirmation (optional).
 val $cp = Fleet::Recipes::ssh_copy_id(+{ password => "pw" })

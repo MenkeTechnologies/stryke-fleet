@@ -422,6 +422,17 @@ fn Fleet::Recipes::kinit ($opts) {
     ]
 }
 
+## ldapsearch — the OpenLDAP simple-bind password prompt (ldapsearch -W). The
+## client prints "Enter LDAP Password: " (clients/tools/common.c). opts: password
+## (required), timeout.
+fn Fleet::Recipes::ldapsearch ($opts) {
+    die "Fleet::Recipes::ldapsearch: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{ name => "ldap password", expect => qr/Enter LDAP Password: ?/, send => $opts->{password} . "\n", timeout => $timeout },
+    ]
+}
+
 ## smbclient — SMB password then the "smb: \>" interactive prompt.
 fn Fleet::Recipes::smbclient ($opts) {
     die "Fleet::Recipes::smbclient: password required" unless defined $opts->{password}
@@ -584,7 +595,7 @@ fn Fleet::Recipes::names {
     qw(ssh_login ssh_copy_id sudo psql mysql redis_cli yes_to_all cisco_enable
        su telnet_login sftp passwd_change docker_login
        scp gpg_decrypt ftp_login openssl_pem mongo npm_login
-       rsync ssh_keygen git_clone kinit smbclient vault_login
+       rsync ssh_keygen git_clone kinit ldapsearch smbclient vault_login
        aws_configure htpasswd keytool ansible_vault sqlplus op_signin
        ssh_add unzip_encrypted cqlsh clickhouse_client gcloud_auth heroku_login)
 }
