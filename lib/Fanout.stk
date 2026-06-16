@@ -95,6 +95,36 @@ fn Fleet::Fanout::group_by_error ($results) {
     \%buckets
 }
 
+## Bucket fan-out results by their captured OUTPUT — fleet config-drift
+## detection. Among the targets that succeeded, group by a comparable output
+## value so the outliers stand out ("47 hosts returned X, 3 returned Y"). The
+## default key is each result's last transcript `data` event (the command's
+## final output); pass a $key fn to extract something finer (a captured field,
+## one line). Returns a hashref { "value" => [cmd, ...] }, cmd order preserved.
+## Unlike group_by_error (which buckets FAILURES by error string), this buckets
+## SUCCESSES by output — the first thing you check when auditing a fleet.
+fn Fleet::Fanout::group_by_output ($results, $key = undef) {
+    var %buckets
+    for val $r (@$results) {
+        if ($r->{ok}) {
+            var $val = undef
+            if (defined $key) {
+                $val = $key->($r)
+            } else {
+                val @ev = @{ $r->{transcript} // [] }
+                $val = @ev ? ($ev[$#ev]{data} // "") : ""
+            }
+            $val //= ""
+            if (exists $buckets{$val}) {
+                push @{ $buckets{$val} }, $r->{cmd}
+            } else {
+                $buckets{$val} = [ $r->{cmd} ]
+            }
+        }
+    }
+    \%buckets
+}
+
 ## Find which fan-out targets saw $pattern in their captured output. Scans every
 ## result's transcript events for a `data` field matching $pattern (a regex
 ## string or qr//) and returns an arrayref of +{ cmd, ok, match } — match is the
