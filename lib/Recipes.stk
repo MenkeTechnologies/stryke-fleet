@@ -79,6 +79,24 @@ fn Fleet::Recipes::sudo ($opts) {
     ]
 }
 
+## doas (the OpenBSD/Alpine sudo replacement). Its prompt is
+## "doas (user@host) password:"; a generic "Password:" is accepted as a fallback.
+## Mirrors sudo: send the password, then wait for the shell prompt. opts:
+## password (required), prompt, timeout.
+fn Fleet::Recipes::doas ($opts) {
+    die "Fleet::Recipes::doas: password required" unless defined $opts->{password}
+    val $prompt = $opts->{prompt} // qr/[\$#%>] ?$/m
+    [
+        +{
+            name    => "doas password",
+            expect  => qr/doas \([^)]*\) password:|[Pp]assword:/,
+            send    => $opts->{password} . "\n",
+            timeout => $opts->{timeout} // 15,
+        },
+        +{ name => "post-doas prompt", expect => $prompt, timeout => $opts->{timeout} // 15 },
+    ]
+}
+
 ## psql: optional password prompt, then the `db=#` prompt. opts:
 ## password, timeout.
 fn Fleet::Recipes::psql ($opts = undef) {
@@ -649,7 +667,7 @@ fn Fleet::Recipes::heroku_login ($opts) {
 
 ## All recipe names this sublib ships.
 fn Fleet::Recipes::names {
-    qw(ssh_login ssh_copy_id sudo psql mysql redis_cli yes_to_all cisco_enable
+    qw(ssh_login ssh_copy_id sudo doas psql mysql redis_cli yes_to_all cisco_enable
        su telnet_login sftp passwd_change docker_login
        scp gpg_decrypt ftp_login openssl_pem mongo npm_login
        rsync ssh_keygen git_clone kinit ldapsearch restic borg age smbclient vault_login

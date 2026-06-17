@@ -154,6 +154,12 @@ val $sudo = Fleet::Recipes::sudo(+{ password => "pw" })
 assert_eq scalar(@$sudo), 2,           "sudo is 2 steps"
 assert_dies fn { Fleet::Recipes::sudo(+{}) }, "sudo dies without password"
 
+val $doas = Fleet::Recipes::doas(+{ password => "pw" })
+assert_eq scalar(@$doas), 2,           "doas is 2 steps"
+assert_eq $doas->[0]{send}, "pw\n",    "doas sends the password first"
+assert_eq Fleet::Playbook::validate($doas), 2, "doas validates"
+assert_dies fn { Fleet::Recipes::doas(+{}) }, "doas dies without password"
+
 assert_eq Fleet::Playbook::validate(Fleet::Recipes::psql(+{ password => "x" })),    2, "psql validates"
 assert_eq Fleet::Playbook::validate(Fleet::Recipes::mysql()),                       1, "mysql validates"
 assert_eq Fleet::Playbook::validate(Fleet::Recipes::redis_cli(+{ password => "x" })), 3, "redis_cli auth validates"
@@ -219,7 +225,7 @@ assert_eq $npm->[2]{send}, "e@x.io\n", "npm_login sends email last"
 assert_eq Fleet::Playbook::validate($npm), 3, "npm_login validates"
 assert_dies fn { Fleet::Recipes::npm_login(+{ user => "u", password => "p" }) }, "npm_login dies without email"
 
-assert_eq scalar(Fleet::Recipes::names()), 42, "recipe roster pinned at 42"
+assert_eq scalar(Fleet::Recipes::names()), 43, "recipe roster pinned at 43"
 
 # restic: repository password, with an optional second (verify) prompt for `init`.
 val $rt = Fleet::Recipes::restic(+{ password => "repo-pw" })
