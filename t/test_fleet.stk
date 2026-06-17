@@ -225,7 +225,7 @@ assert_eq $npm->[2]{send}, "e@x.io\n", "npm_login sends email last"
 assert_eq Fleet::Playbook::validate($npm), 3, "npm_login validates"
 assert_dies fn { Fleet::Recipes::npm_login(+{ user => "u", password => "p" }) }, "npm_login dies without email"
 
-assert_eq scalar(Fleet::Recipes::names()), 43, "recipe roster pinned at 43"
+assert_eq scalar(Fleet::Recipes::names()), 44, "recipe roster pinned at 44"
 
 # restic: repository password, with an optional second (verify) prompt for `init`.
 val $rt = Fleet::Recipes::restic(+{ password => "repo-pw" })
@@ -330,10 +330,18 @@ assert_eq scalar(@$hk), 2, "heroku_login is email + password"
 assert_eq $hk->[0]{send}, "e@x.io\n", "heroku_login sends email first"
 assert_dies fn { Fleet::Recipes::heroku_login(+{ email => "e@x.io" }) }, "heroku_login needs password"
 
+# bw_unlock: single master-password step answering Bitwarden's "Master password:".
+val $bw = Fleet::Recipes::bw_unlock(+{ password => "pw" })
+assert_eq scalar(@$bw), 1, "bw_unlock is 1 step"
+assert_eq $bw->[0]{send}, "pw\n", "bw_unlock sends the master password"
+assert_ok "? Master password:" =~ $bw->[0]{expect}, "bw_unlock matches the Bitwarden prompt"
+assert_dies fn { Fleet::Recipes::bw_unlock(+{}) }, "bw_unlock needs password"
+
 # Every new recipe builds a structurally valid playbook (validate counts steps).
 assert_eq Fleet::Playbook::validate($awscfg), 4, "aws_configure validates as a playbook"
 assert_eq Fleet::Playbook::validate($sp),     2, "sqlplus validates as a playbook"
 assert_eq Fleet::Playbook::validate($hk),     2, "heroku_login validates as a playbook"
+assert_eq Fleet::Playbook::validate($bw),     1, "bw_unlock validates as a playbook"
 
 # ── Fanout over local sessions ───────────────────────────────────────
 val $results = Fleet::Fanout::run(["cat", "cat", "cat"], [

@@ -665,6 +665,18 @@ fn Fleet::Recipes::heroku_login ($opts) {
     ]
 }
 
+## `bw unlock` (Bitwarden CLI): the master-password prompt that yields a
+## session key — the Bitwarden analog of `op_signin`. opts: password (required).
+## The CLI's Inquirer prompt reads `? Master password:` and on success prints an
+## `export BW_SESSION="..."` line to eval. Verified at bitwarden.com/help/cli/.
+fn Fleet::Recipes::bw_unlock ($opts) {
+    die "Fleet::Recipes::bw_unlock: password required" unless defined $opts->{password}
+    val $t = $opts->{timeout} // 30
+    [
+        +{ name => "master password", expect => qr/Master password:/, send => $opts->{password} . "\n", timeout => $t },
+    ]
+}
+
 ## All recipe names this sublib ships.
 fn Fleet::Recipes::names {
     qw(ssh_login ssh_copy_id sudo doas psql mysql redis_cli yes_to_all cisco_enable
@@ -672,5 +684,6 @@ fn Fleet::Recipes::names {
        scp gpg_decrypt ftp_login openssl_pem mongo npm_login
        rsync ssh_keygen git_clone kinit ldapsearch restic borg age smbclient vault_login
        aws_configure htpasswd keytool ansible_vault sqlplus op_signin
-       ssh_add unzip_encrypted cqlsh cryptsetup clickhouse_client gcloud_auth heroku_login)
+       ssh_add unzip_encrypted cqlsh cryptsetup clickhouse_client gcloud_auth heroku_login
+       bw_unlock)
 }
