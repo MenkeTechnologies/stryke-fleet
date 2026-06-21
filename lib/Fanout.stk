@@ -100,6 +100,56 @@ fn Fleet::Fanout::pluck ($results, $key) {
     [ map { $key->($_) } @$results ]
 }
 
+## The cmd string of every OK fan-out result, in order — the complement of
+## `failed_cmds`. The bare list of targets that passed, for a "now run the next
+## stage only against the hosts that succeeded" hand-off.
+fn Fleet::Fanout::ok_cmds ($results) {
+    [ map { $_->{cmd} } grep { $_->{ok} } @$results ]
+}
+
+## Find the FIRST fan-out result whose cmd matches $pattern (a regex string or
+## qr//) — the by-target lookup over a result list (results come back in cmd
+## order, not keyed). Returns the result hashref, or undef when no cmd matches.
+fn Fleet::Fanout::find ($results, $pattern) {
+    val $re = ref($pattern) eq "Regexp" ? $pattern : qr/$pattern/
+    for val $r (@$results) {
+        return $r if ($r->{cmd} // "") =~ $re
+    }
+    undef
+}
+
+## Bucket ALL fan-out results by a $key fn → a hashref { "key value" => [cmd, ...] }
+## with cmd order preserved within each bucket. The general grouping primitive that
+## group_by_error (failures by error) and group_by_output (successes by output)
+## specialize: pass any key fn to slice the fleet however you need —
+## group_by($results, fn ($r) { $r->{ok} ? "ok" : "fail" }) for the pass/fail split,
+## or a captured field for an arbitrary pivot. $key is required and called once per
+## result; an undef key is bucketed under "".
+fn Fleet::Fanout::group_by ($results, $key) {
+    die "Fleet::Fanout::group_by: key must be a coderef" unless ref($key) eq "CODE"
+    var %buckets
+    for val $r (@$results) {
+        var $k = $key->($r)
+        $k //= ""
+        if (exists $buckets{$k}) {
+            push @{ $buckets{$k} }, $r->{cmd}
+        } else {
+            $buckets{$k} = [ $r->{cmd} ]
+        }
+    }
+    \%buckets
+}
+
+## Map a $key fn over only the OK fan-out results → an arrayref of one extracted
+## value per success, order preserved — the `pluck` that skips failures. The clean
+## "just the versions from the hosts that answered" projection, without the undefs
+## that plucking a captured field off a failed result would yield. $key is required
+## and called once per ok result.
+fn Fleet::Fanout::pluck_ok ($results, $key) {
+    die "Fleet::Fanout::pluck_ok: key must be a coderef" unless ref($key) eq "CODE"
+    [ map { $key->($_) } grep { $_->{ok} } @$results ]
+}
+
 ## One-line-per-failure report over fan-out results:
 ##   +{ total, ok, failed, errors => ["CMD: ERROR", ...] }
 fn Fleet::Fanout::summarize ($results) {

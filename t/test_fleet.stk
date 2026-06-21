@@ -629,4 +629,81 @@ assert_eq $pl->[0], "ssh a",      "pluck extracts via the key fn, order preserve
 assert_eq join(",", @{ Fleet::Fanout::pluck($cres, fn ($r) { $r->{ok} }) }), "1,0,1,0", "pluck projects an arbitrary field"
 assert_dies fn { Fleet::Fanout::pluck($cres, "nope") }, "pluck rejects a non-coderef key"
 
+# ── Session::expect_exact — literal (quote-meta) match ───────────────
+val $xe = Fleet::Session::open("cat")
+Fleet::Session::send($xe, "ver: 1.2*\n")
+# A literal "1.2*" must match the echoed text even though * / . are regex meta.
+assert_eq Fleet::Session::expect_exact($xe, "1.2*", 10), "1.2*", "expect_exact matches the literal (meta chars quoted)"
+assert_eq $xe->{log}[1]{event}, "match", "expect_exact logs a match event"
+Fleet::Session::close($xe)
+# A literal whose meta interpretation would falsely match must NOT match here:
+# regex "a.c" matches "axc", but expect_exact("a.c") wants the literal dot.
+val $xe2 = Fleet::Session::open("cat")
+Fleet::Session::send($xe2, "axc\n")
+assert_eq Fleet::Session::expect_exact($xe2, "a.c", 1), undef, "expect_exact treats . as a literal dot (no false match)"
+assert_ok Fleet::Session::timed_out($xe2), "expect_exact logs a timeout when the literal is absent"
+Fleet::Session::close($xe2)
+
+# ── Session::sendline_expect — send-then-expect atom ─────────────────
+val $sle = Fleet::Session::open("cat")
+assert_eq Fleet::Session::sendline_expect($sle, "round-trip", qr/round-trip/, 10), "round-trip",
+    "sendline_expect sends the line and returns the match"
+assert_eq $sle->{log}[0]{event}, "send",  "sendline_expect logs the send first"
+assert_eq $sle->{log}[0]{data},  "round-trip\n", "sendline_expect newline-terminates the line"
+assert_eq $sle->{log}[1]{event}, "match", "sendline_expect logs the match second"
+assert_eq Fleet::Session::sendline_expect($sle, "x", qr/never-appears/, 1), undef,
+    "sendline_expect returns undef when the expect times out"
+Fleet::Session::close($sle)
+
+# ── Session::drain — collect trailing output until idle ──────────────
+# `printf` emits a fixed string and exits; drain should collect all of it.
+val $dr = Fleet::Session::open("sh -c 'printf one-two-three'")
+val $drained = Fleet::Session::drain($dr, 1)
+assert_match qr/one-two-three/, $drained, "drain collects the command's output"
+Fleet::Session::close($dr)
+# Draining a session with nothing buffered returns the empty string, not undef.
+val $dr2 = Fleet::Session::open("cat")
+assert_eq Fleet::Session::drain($dr2, 1), "", "drain returns empty string when nothing is buffered"
+Fleet::Session::close($dr2)
+
+# ── Fanout::ok_cmds — the complement of failed_cmds ──────────────────
+# Reuse $cres from the count/all_ok block above (a/c ok, b/d failed).
+val $okc = Fleet::Fanout::ok_cmds($cres)
+assert_eq scalar(@$okc), 2,   "ok_cmds returns one per success"
+assert_eq $okc->[0], "ssh a", "ok_cmds keeps cmd, order preserved"
+assert_eq $okc->[1], "ssh c", "ok_cmds lists the second success"
+assert_eq scalar(@{ Fleet::Fanout::ok_cmds([ +{ cmd => "x", ok => 0, error => "e" } ]) }), 0,
+    "ok_cmds all-failed → empty"
+
+# ── Fanout::find — first result whose cmd matches a pattern ───────────
+val $found = Fleet::Fanout::find($cres, qr/ssh c/)
+assert_eq $found->{cmd}, "ssh c", "find returns the result with the matching cmd"
+assert_eq Fleet::Fanout::find($cres, "ssh b")->{error}, "refused", "find: string pattern, returns the whole result"
+assert_eq Fleet::Fanout::find($cres, qr/ssh /)->{cmd}, "ssh a", "find returns the FIRST match"
+assert_eq Fleet::Fanout::find($cres, qr/nope/), undef, "find returns undef when no cmd matches"
+
+# ── Fanout::group_by — the general bucketing primitive ───────────────
+val $gb = Fleet::Fanout::group_by($cres, fn ($r) { $r->{ok} ? "ok" : "fail" })
+assert_eq scalar(keys %$gb),          2,       "group_by: pass/fail split is 2 buckets"
+assert_eq scalar(@{ $gb->{"ok"} }),   2,       "group_by: two ok cmds in the ok bucket"
+assert_eq scalar(@{ $gb->{"fail"} }), 2,       "group_by: two failed cmds in the fail bucket"
+assert_eq $gb->{"ok"}[0],             "ssh a", "group_by: bucket keeps cmd, order preserved"
+# An undef key lands in the "" bucket rather than dropping the result.
+val $gbu = Fleet::Fanout::group_by([ +{ cmd => "x", ok => 1 } ], fn ($r) { $r->{missing} })
+assert_eq scalar(@{ $gbu->{""} }), 1, "group_by: undef key buckets under empty string"
+assert_dies fn { Fleet::Fanout::group_by($cres, "nope") }, "group_by rejects a non-coderef key"
+
+# ── Fanout::pluck_ok — pluck only over successes ─────────────────────
+val $vres = [
+    +{ cmd => "ssh a", ok => 1, version => "1.2.3" },
+    +{ cmd => "ssh b", ok => 0, error => "refused" },
+    +{ cmd => "ssh c", ok => 1, version => "1.2.4" },
+]
+val $vers = Fleet::Fanout::pluck_ok($vres, fn ($r) { $r->{version} })
+assert_eq scalar(@$vers), 2, "pluck_ok skips the failed result"
+assert_eq join(",", @$vers), "1.2.3,1.2.4", "pluck_ok projects only the ok values, order preserved"
+assert_eq scalar(@{ Fleet::Fanout::pluck_ok([ +{ cmd => "x", ok => 0 } ], fn ($r) { $r->{version} }) }), 0,
+    "pluck_ok all-failed → empty"
+assert_dies fn { Fleet::Fanout::pluck_ok($vres, "nope") }, "pluck_ok rejects a non-coderef key"
+
 test_run

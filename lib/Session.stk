@@ -146,6 +146,46 @@ fn Fleet::Session::expect_any ($s, $pats, $timeout = undef) {
     Fleet::Session::branch($s, \@branches, $timeout)
 }
 
+## Wait for the LITERAL string $text to appear — pexpect/Expect's
+## `expect_exact`, the metacharacter-free counterpart of `expect`. The
+## text is quote-meta'd (\Q…\E) so regex metacharacters (`.`, `*`, `?`,
+## `[`, `(`, …) are matched as themselves — the right primitive for
+## prompts that contain regex-special chars (a path, a `$` prompt, a
+## `(yes/no)?` literal). Returns the matched text, or undef on timeout;
+## the outcome is logged exactly like `expect`.
+fn Fleet::Session::expect_exact ($s, $text, $timeout = undef) {
+    Fleet::Session::expect($s, quotemeta($text), $timeout)
+}
+
+## Send $text as a line (trailing newline added unless present, like
+## `send_line`) and then immediately wait for $pat — the send-then-expect
+## atom that most expect scripts repeat. Returns the matched text (undef
+## on timeout). Both the send and the expect outcome are logged.
+fn Fleet::Session::sendline_expect ($s, $text, $pat, $timeout = undef) {
+    Fleet::Session::send_line($s, $text)
+    Fleet::Session::expect($s, $pat, $timeout)
+}
+
+## Drain all remaining output until the child goes idle: repeatedly
+## `pty_read` with a short per-read $idle timeout, concatenating every
+## chunk, stopping at the first read that returns nothing (or once the
+## child is at EOF). The expect-`read`/`expect(EOF)` primitive for
+## "collect whatever the command printed after the last prompt" — a
+## command's trailing output, a banner, a final report. Returns the
+## accumulated string ("" if nothing was buffered). Not logged (it is a
+## bulk read, not a matched event).
+fn Fleet::Session::drain ($s, $idle = undef) {
+    $idle //= 1
+    var $out = ""
+    while (1) {
+        last if Fleet::Session::eof($s)
+        val $chunk = pty_read($s->{raw}, $idle)
+        last unless defined $chunk && length($chunk) > 0
+        $out .= $chunk
+    }
+    $out
+}
+
 ## Transcript entries of one event type (send / match / timeout /
 ## close), in order. events($s, "match") → the matched-text entries.
 fn Fleet::Session::events ($s, $type) {
