@@ -64,6 +64,42 @@ fn Fleet::Fanout::partition ($results) {
     }
 }
 
+## Tally fan-out results: +{ total, ok, failed }. The numbers-only core of
+## `summarize` (no error lines) — the cheap "how did the fleet do" check when you
+## do not need the per-host error strings.
+fn Fleet::Fanout::count ($results) {
+    var $ok = 0
+    for val $r (@$results) { $ok++ if $r->{ok} }
+    +{
+        total  => scalar(@$results),
+        ok     => $ok,
+        failed => scalar(@$results) - $ok,
+    }
+}
+
+## True (1) iff every fan-out result is ok — the boolean gate for "did the whole
+## fleet pass". An empty result set is vacuously ok (1). Returns 0 otherwise.
+fn Fleet::Fanout::all_ok ($results) {
+    for val $r (@$results) { return 0 unless $r->{ok} }
+    1
+}
+
+## The cmd string of every failed fan-out result, in order — the bare list of
+## targets to look at, without the error text `summarize` interleaves. Pairs with
+## retry_failed/retry_until when you want to drive the failures yourself.
+fn Fleet::Fanout::failed_cmds ($results) {
+    [ map { $_->{cmd} } grep { !$_->{ok} } @$results ]
+}
+
+## Map a key fn over fan-out results → an arrayref of one extracted value per
+## result, order preserved. The projection primitive group_by_output buckets with:
+## pluck($results, fn ($r) { $r->{version} }) is "just the versions, in host
+## order". $key is required and called once per result.
+fn Fleet::Fanout::pluck ($results, $key) {
+    die "Fleet::Fanout::pluck: key must be a coderef" unless ref($key) eq "CODE"
+    [ map { $key->($_) } @$results ]
+}
+
 ## One-line-per-failure report over fan-out results:
 ##   +{ total, ok, failed, errors => ["CMD: ERROR", ...] }
 fn Fleet::Fanout::summarize ($results) {

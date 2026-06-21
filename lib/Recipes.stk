@@ -665,6 +665,80 @@ fn Fleet::Recipes::heroku_login ($opts) {
     ]
 }
 
+## MariaDB `mariadb`/`mysql` client launched with `-p`: optional password prompt
+## ("Enter password: ", the shared get_tty_password text), then the MariaDB prompt
+## ("MariaDB [(none)]>" / "MariaDB [db]>"). Distinct from `mysql` here: MariaDB's
+## interactive prompt is `MariaDB [...]>`, not `mysql>`. opts: password, timeout.
+fn Fleet::Recipes::mariadb ($opts = undef) {
+    $opts //= +{}
+    val $timeout = $opts->{timeout} // 15
+    var @steps
+    if (defined $opts->{password}) {
+        push @steps, +{
+            name     => "mariadb password",
+            expect   => qr/Enter password:/,
+            send     => $opts->{password} . "\n",
+            timeout  => $timeout,
+            optional => 1,
+        }
+    }
+    push @steps, +{ name => "mariadb prompt", expect => qr/MariaDB \[[^\]]*\]> ?$/m, timeout => $timeout }
+    [@steps]
+}
+
+## `pg_dump` / libpq password prompt — the password-needing path of any libpq tool
+## (pg_dump, pg_restore, psql -W). libpq prints "Password: " when no username is
+## known, or "Password for user NAME: " when one is. Both are matched. opts:
+## password (required), timeout.
+fn Fleet::Recipes::pg_dump ($opts) {
+    die "Fleet::Recipes::pg_dump: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{ name => "libpq password", expect => qr/Password(?: for user [^:]*)?: ?/, send => $opts->{password} . "\n", timeout => $timeout },
+    ]
+}
+
+## `pass insert NAME` (passwordstore.org): the new-secret entry — "Enter password
+## for NAME: " then "Retype password for NAME: " (password-store 1.7.x, lines
+## 466/468). With `pass insert -e` only the first prompt appears, so the retype
+## step is optional. opts: password (required), timeout.
+fn Fleet::Recipes::pass_insert ($opts) {
+    die "Fleet::Recipes::pass_insert: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 15
+    [
+        +{ name => "pass password",        expect => qr/Enter password for .*: ?/,  send => $opts->{password} . "\n", timeout => $timeout },
+        +{ name => "pass password retype", expect => qr/Retype password for .*: ?/, send => $opts->{password} . "\n", timeout => $timeout, optional => 1 },
+    ]
+}
+
+## Bitwarden CLI `bw unlock`: the master-password prompt ("Master password:",
+## apps/cli/src/utils.ts). Outputs the session token on success — no further
+## interactive prompt. opts: password (required), timeout.
+fn Fleet::Recipes::bw_unlock ($opts) {
+    die "Fleet::Recipes::bw_unlock: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 30
+    [
+        +{ name => "master password", expect => qr/Master password: ?/, send => $opts->{password} . "\n", timeout => $timeout },
+    ]
+}
+
+## InfluxDB v1 `influx` client interactive auth ("username: " then "password: ",
+## cmd/influx/cli/cli.go SetAuth), then the "> " query prompt. The username step is
+## optional (skipped when -username was passed on the command line). opts: user,
+## password (required), timeout.
+fn Fleet::Recipes::influx ($opts) {
+    die "Fleet::Recipes::influx: password required" unless defined $opts->{password}
+    val $timeout = $opts->{timeout} // 15
+    var @steps
+    if (defined $opts->{user}) {
+        push @steps, +{ name => "influx username", expect => qr/username: ?/i, send => $opts->{user} . "\n", timeout => $timeout, optional => 1 }
+    }
+    push @steps,
+        +{ name => "influx password", expect => qr/password: ?/i, send => $opts->{password} . "\n", timeout => $timeout },
+        +{ name => "influx prompt",   expect => qr/> ?$/m,        timeout => $timeout, optional => 1 }
+    [@steps]
+}
+
 ## All recipe names this sublib ships.
 fn Fleet::Recipes::names {
     qw(ssh_login ssh_copy_id sudo doas psql mysql redis_cli yes_to_all cisco_enable
@@ -672,5 +746,6 @@ fn Fleet::Recipes::names {
        scp gpg_decrypt ftp_login openssl_pem mongo npm_login
        rsync ssh_keygen git_clone kinit ldapsearch restic borg age smbclient vault_login
        aws_configure htpasswd keytool ansible_vault sqlplus op_signin
-       ssh_add unzip_encrypted cqlsh cryptsetup clickhouse_client gcloud_auth heroku_login)
+       ssh_add unzip_encrypted cqlsh cryptsetup clickhouse_client gcloud_auth heroku_login
+       mariadb pg_dump pass_insert bw_unlock influx)
 }

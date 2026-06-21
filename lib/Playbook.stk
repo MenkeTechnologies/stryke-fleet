@@ -66,6 +66,22 @@ fn Fleet::Playbook::dry_run ($steps) {
     join("\n", @lines)
 }
 
+## Splice several step-lists into one playbook and validate the result. Takes
+## any number of arrayrefs (recipes return these) and concatenates them in order,
+## the explicit form of the `(@{ $a }, @{ $b }, ...)` splice the recipes README
+## shows. Validates the combined list and returns the flat arrayref, ready for
+## `run`. Dies (via validate) if any element is not a well-formed step.
+fn Fleet::Playbook::concat (@parts) {
+    var @steps
+    for val $p (@parts) {
+        next unless defined $p
+        die "Fleet::Playbook::concat: each part must be an arrayref" unless ref($p) eq "ARRAY"
+        push @steps, @$p
+    }
+    Fleet::Playbook::validate(\@steps)
+    \@steps
+}
+
 ## Run \@steps against CMD (string → session spawned here, hashref →
 ## an already-open Fleet::Session). Returns the result hashref:
 ##

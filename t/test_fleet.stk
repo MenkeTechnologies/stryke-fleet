@@ -225,7 +225,7 @@ assert_eq $npm->[2]{send}, "e@x.io\n", "npm_login sends email last"
 assert_eq Fleet::Playbook::validate($npm), 3, "npm_login validates"
 assert_dies fn { Fleet::Recipes::npm_login(+{ user => "u", password => "p" }) }, "npm_login dies without email"
 
-assert_eq scalar(Fleet::Recipes::names()), 43, "recipe roster pinned at 43"
+assert_eq scalar(Fleet::Recipes::names()), 48, "recipe roster pinned at 48"
 
 # restic: repository password, with an optional second (verify) prompt for `init`.
 val $rt = Fleet::Recipes::restic(+{ password => "repo-pw" })
@@ -518,5 +518,115 @@ assert_eq $bad_sum->{failed}, 2, "integration: all-fail fanout both failed"
 assert_match qr/ghost/, $bad_sum->{errors}[0], "integration: summarize names the failed step"
 val $fixed = Fleet::Fanout::retry_failed($bad_res, [ +{ send => "ok\n" } ])
 assert_ok $fixed->[0]{retried}, "integration: retry_failed re-ran the failures"
+
+# ── New recipes: mariadb / pg_dump / pass_insert / bw_unlock / influx ─
+val $mdb = Fleet::Recipes::mariadb(+{ password => "pw" })
+assert_eq scalar(@$mdb), 2,           "mariadb with password is 2 steps"
+assert_eq $mdb->[0]{send}, "pw\n",    "mariadb sends the password"
+assert_ok $mdb->[0]{optional},        "mariadb password step is optional"
+assert_ok "Enter password: " =~ $mdb->[0]{expect}, "mariadb matches the get_tty_password prompt"
+assert_ok "MariaDB [(none)]> " =~ $mdb->[1]{expect}, "mariadb matches the no-db prompt"
+assert_ok "MariaDB [shop]> " =~ $mdb->[1]{expect},   "mariadb matches the selected-db prompt"
+assert_eq scalar(@{ Fleet::Recipes::mariadb() }), 1, "mariadb without password is just the prompt"
+assert_eq Fleet::Playbook::validate($mdb), 2,        "mariadb validates"
+
+val $pgd = Fleet::Recipes::pg_dump(+{ password => "pw" })
+assert_eq scalar(@$pgd), 1,           "pg_dump is 1 step"
+assert_eq $pgd->[0]{send}, "pw\n",    "pg_dump sends the libpq password"
+assert_ok "Password: " =~ $pgd->[0]{expect},                  "pg_dump matches the bare libpq prompt"
+assert_ok "Password for user admin: " =~ $pgd->[0]{expect},   "pg_dump matches the with-user libpq prompt"
+assert_dies fn { Fleet::Recipes::pg_dump(+{}) }, "pg_dump dies without a password"
+
+val $pi = Fleet::Recipes::pass_insert(+{ password => "pw" })
+assert_eq scalar(@$pi), 2,            "pass_insert is enter + optional retype"
+assert_eq $pi->[0]{send}, "pw\n",     "pass_insert sends the password"
+assert_eq $pi->[1]{send}, "pw\n",     "pass_insert re-sends on retype"
+assert_ok $pi->[1]{optional},         "pass_insert retype is optional (pass -e skips it)"
+assert_ok "Enter password for github/token: "  =~ $pi->[0]{expect}, "pass_insert matches the enter prompt"
+assert_ok "Retype password for github/token: " =~ $pi->[1]{expect}, "pass_insert matches the retype prompt"
+assert_dies fn { Fleet::Recipes::pass_insert(+{}) }, "pass_insert dies without a password"
+
+val $bw = Fleet::Recipes::bw_unlock(+{ password => "pw" })
+assert_eq scalar(@$bw), 1,            "bw_unlock is 1 step"
+assert_eq $bw->[0]{send}, "pw\n",     "bw_unlock sends the master password"
+assert_ok "Master password: " =~ $bw->[0]{expect}, "bw_unlock matches the master-password prompt"
+assert_dies fn { Fleet::Recipes::bw_unlock(+{}) }, "bw_unlock dies without a password"
+
+val $inf = Fleet::Recipes::influx(+{ user => "admin", password => "pw" })
+assert_eq scalar(@$inf), 3,           "influx with user is username + password + prompt"
+assert_eq $inf->[0]{send}, "admin\n", "influx sends the username first"
+assert_ok $inf->[0]{optional},        "influx username step is optional"
+assert_ok "password: " =~ $inf->[1]{expect}, "influx matches the password prompt"
+assert_eq scalar(@{ Fleet::Recipes::influx(+{ password => "pw" }) }), 2, "influx without user skips the username step"
+assert_dies fn { Fleet::Recipes::influx(+{ user => "x" }) }, "influx dies without a password"
+assert_eq Fleet::Playbook::validate($inf), 3, "influx validates"
+
+# ── Session::send_lines — send a sequence of newline-terminated lines ─
+val $sl = Fleet::Session::open("cat")
+assert_eq Fleet::Session::send_lines($sl, ["one", "two\n", "three"]), 3, "send_lines returns the line count"
+assert_eq $sl->{log}[0]{data}, "one\n",   "send_lines appends newline to bare line"
+assert_eq $sl->{log}[1]{data}, "two\n",   "send_lines leaves an existing newline"
+assert_eq $sl->{log}[2]{data}, "three\n", "send_lines newline-terminates the last line"
+Fleet::Session::expect($sl, qr/three/, 10)
+assert_eq Fleet::Session::last_match($sl), "three", "send_lines transmits the lines (cat echoes)"
+assert_dies fn { Fleet::Session::send_lines($sl, "nope") }, "send_lines rejects a non-arrayref"
+Fleet::Session::close($sl)
+
+# ── Session::expect_any — first-of-many prompt match, no actions ──────
+val $ea = Fleet::Session::open("cat")
+Fleet::Session::send($ea, "second-prompt\n")
+val $hit = Fleet::Session::expect_any($ea, [qr/first-prompt/, qr/second-prompt/, qr/third/], 10)
+assert_eq $hit->{index}, 1,            "expect_any reports the matching pattern index"
+assert_eq $hit->{match}, "second-prompt", "expect_any returns the matched text"
+assert_eq $ea->{log}[1]{event}, "match", "expect_any logs a match event"
+Fleet::Session::close($ea)
+val $eat = Fleet::Session::open("cat")
+assert_eq Fleet::Session::expect_any($eat, [qr/never/, qr/appears/], 1), undef, "expect_any returns undef on timeout"
+assert_ok Fleet::Session::timed_out($eat), "expect_any logs a timeout on miss"
+assert_dies fn { Fleet::Session::expect_any($eat, "nope", 1) }, "expect_any rejects a non-arrayref"
+Fleet::Session::close($eat)
+
+# ── Playbook::concat — splice + validate several step-lists ───────────
+val $cc = Fleet::Playbook::concat(
+    Fleet::Recipes::ssh_login(+{ password => "pw" }),
+    [ +{ send => "uptime\n" } ],
+    Fleet::Recipes::yes_to_all(2),
+)
+assert_eq ref($cc), "ARRAY",       "concat returns an arrayref"
+assert_eq scalar(@$cc), 6,         "concat flattens 3 + 1 + 2 steps"
+assert_eq $cc->[3]{send}, "uptime\n", "concat preserves step order across parts"
+assert_eq Fleet::Playbook::validate($cc), 6, "concat output validates as a playbook"
+assert_eq scalar(@{ Fleet::Playbook::concat() }), 0, "concat of nothing is the empty playbook"
+assert_dies fn { Fleet::Playbook::concat([ +{ send => "x\n" } ], "nope") }, "concat rejects a non-arrayref part"
+assert_dies fn { Fleet::Playbook::concat([ +{} ]) }, "concat validates its parts (actionless step dies)"
+
+# ── Fanout::count / all_ok / failed_cmds / pluck ─────────────────────
+val $cres = [
+    +{ cmd => "ssh a", ok => 1 },
+    +{ cmd => "ssh b", ok => 0, error => "refused" },
+    +{ cmd => "ssh c", ok => 1 },
+    +{ cmd => "ssh d", ok => 0, error => "auth" },
+]
+val $cnt = Fleet::Fanout::count($cres)
+assert_eq $cnt->{total},  4, "count total"
+assert_eq $cnt->{ok},     2, "count ok"
+assert_eq $cnt->{failed}, 2, "count failed"
+assert_eq Fleet::Fanout::count([])->{total}, 0, "count of empty is zero"
+
+assert_ok !Fleet::Fanout::all_ok($cres),                            "all_ok false when any failed"
+assert_ok Fleet::Fanout::all_ok([ +{ ok => 1 }, +{ ok => 1 } ]),    "all_ok true when all ok"
+assert_ok Fleet::Fanout::all_ok([]),                                "all_ok true for empty (vacuous)"
+
+val $fc = Fleet::Fanout::failed_cmds($cres)
+assert_eq scalar(@$fc), 2,        "failed_cmds returns one per failure"
+assert_eq $fc->[0], "ssh b",      "failed_cmds keeps cmd, order preserved"
+assert_eq $fc->[1], "ssh d",      "failed_cmds lists the second failure"
+assert_eq scalar(@{ Fleet::Fanout::failed_cmds([ +{ cmd => "x", ok => 1 } ]) }), 0, "failed_cmds all-ok → empty"
+
+val $pl = Fleet::Fanout::pluck($cres, fn ($r) { $r->{cmd} })
+assert_eq scalar(@$pl), 4,        "pluck returns one value per result"
+assert_eq $pl->[0], "ssh a",      "pluck extracts via the key fn, order preserved"
+assert_eq join(",", @{ Fleet::Fanout::pluck($cres, fn ($r) { $r->{ok} }) }), "1,0,1,0", "pluck projects an arbitrary field"
+assert_dies fn { Fleet::Fanout::pluck($cres, "nope") }, "pluck rejects a non-coderef key"
 
 test_run

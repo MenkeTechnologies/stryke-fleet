@@ -117,6 +117,35 @@ fn Fleet::Session::send_control ($s, $char) {
     pty_send($s->{raw}, chr($byte))
 }
 
+## Send each line of \@lines in order, newline-terminated like `send_line` (a
+## trailing newline is added unless the line already ends in one). The common case
+## for typing a short script or a sequence of answers into a session. Each line is
+## logged as its own `send` event; returns the number of lines sent.
+fn Fleet::Session::send_lines ($s, $lines) {
+    die "Fleet::Session::send_lines: lines must be an arrayref" unless ref($lines) eq "ARRAY"
+    for val $line (@$lines) {
+        Fleet::Session::send_line($s, $line)
+    }
+    scalar @$lines
+}
+
+## Wait for the FIRST of \@pats (each a qr// or string) to appear, returning
+## +{ index => N, match => TEXT } for the pattern that hit, or undef on timeout.
+## A multi-prompt expect without the action coderefs `branch` carries — when you
+## only need to know which of several prompts arrived. Built on `branch`, so the
+## hit is logged as a `match` event (or a `timeout` event on miss).
+fn Fleet::Session::expect_any ($s, $pats, $timeout = undef) {
+    die "Fleet::Session::expect_any: pats must be an arrayref" unless ref($pats) eq "ARRAY"
+    var @branches
+    var $i = 0
+    for val $p (@$pats) {
+        val $idx = $i
+        push @branches, +{ re => $p, do => fn { +{ index => $idx, match => $_[0] } } }
+        $i++
+    }
+    Fleet::Session::branch($s, \@branches, $timeout)
+}
+
 ## Transcript entries of one event type (send / match / timeout /
 ## close), in order. events($s, "match") → the matched-text entries.
 fn Fleet::Session::events ($s, $type) {
