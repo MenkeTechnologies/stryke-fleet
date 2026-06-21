@@ -85,7 +85,7 @@ p "$_->{event} $_->{data}" for @{ $r->{transcript} }
 
 # Branch tables — first match wins, optional action coderef
 +{ branches => [
-       +{ re => qr/\(yes\/no\)\?/, do => sub { "yes\n" } },
+       +{ re => qr/\(yes\/no\)\?/, do => fn { "yes\n" } },
        +{ re => qr/password:/ },
    ],
    send_matched => 1 }
@@ -94,7 +94,7 @@ p "$_->{event} $_->{data}" for @{ $r->{transcript} }
 val $results = Fleet::Fanout::ssh([@hosts],
     Fleet::Recipes::ssh_login(+{ password => $pw }))
 val $part = Fleet::Fanout::partition($results)
-p "ok: " . scalar(@{ $part->{ok} }) . "  failed: " . scalar(@{ $part->{failed} })
+p "ok: #{len @{$part->{ok}}}  failed: #{len @{$part->{failed}}}"
 ```
 
 ## [0x03] Sublibraries
